@@ -1,4 +1,4 @@
-# Beyond Money
+# Beyond Money — V 2.1.5
 
 Personal finance tracker to track income, expenses, credit cards, assets, subscriptions, and net worth — all in one place.
 Beyond Money is designed around simplicity and control. Every major feature flows naturally from a central dashboard, letting you monitor, record, and analyze your finances without friction. 

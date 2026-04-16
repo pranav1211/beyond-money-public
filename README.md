@@ -40,6 +40,10 @@ The creators and contributors of Beyond Money are not responsible for any financ
 | Offline | IndexedDB + Service Worker |
 | Currency | Open Exchange Rates API |
 
+## Changelog
+
+View the changelog here : (Changelog)[https://github.com/pranav1211/beyond-money-public/blob/main/changelog.md]
+
 ## Getting Started
 
 ### Prerequisites

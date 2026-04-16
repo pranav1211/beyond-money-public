@@ -211,7 +211,7 @@ Stay on top of recurring expenses by managing all your **active subscriptions** 
 
 ## Net Worth
 
-![Net Worth](https://content.beyondmebtw.com/assets/projects/bmoney/7networthsdesk.webp)
+![Net Worth](https://content.beyondmebtw.com/assets/projects/bmoney/7networthdesk.webp)
 
 A consolidated view of your **total net worth**, factoring in all assets and liabilities. Understand the full picture of your financial health beyond just day-to-day cash flow.
 

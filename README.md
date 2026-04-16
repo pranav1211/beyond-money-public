@@ -2,6 +2,16 @@
 
 Personal finance tracker PWA built with Vue 3 + Supabase. Track income, expenses, credit cards, assets, subscriptions, and net worth — all in one place.
 
+## Disclaimer
+
+Beyond Money is an educational and informational project designed to help users better understand personal finance concepts and tools.
+
+This application does **not** provide financial, investment, tax, or legal advice. Any information, calculations, forecasts, or recommendations shown in this project should not be considered professional advice or a substitute for consulting a qualified financial advisor.
+
+Users should conduct their own research and consult licensed professionals before making any financial decisions. Use of this project is entirely at your own risk.
+
+The creators and contributors of Beyond Money are not responsible for any financial losses, decisions, or outcomes resulting from the use of this software.
+
 ## Features
 
 - **Accounts** — manage savings, cash, and wallet balances
@@ -146,6 +156,122 @@ exchange_rate_cache (standalone)
 npm run build      # Production build → dist/
 npm run preview    # Preview the build locally
 ```
+## Preview
+
+## Overview
+
+BeyondMoney is designed around simplicity and control. Every major feature flows naturally from a central dashboard, letting you monitor, record, and analyze your finances without friction.
+
+---
+
+## Dashboard
+
+![Dashboard](https://content.beyondmebtw.com/assets/projects/bmoney/1dashboarddesk.webp)
+
+The home base. At a glance, you can see your **latest transactions**, your **current net worth**, and a **month-based breakdown** of income vs. expenses — everything you need to understand where you stand financially, right now.
+
+---
+
+## Transactions
+
+![Transactions](https://content.beyondmebtw.com/assets/projects/bmoney/2transactionsdesk.webp)
+
+A full history of your financial activity. Browse through all past transactions and filter by date, type, category, account, label, or any combination of parameters to find exactly what you're looking for.
+
+### Adding a Transaction
+
+![Add Transaction](https://content.beyondmebtw.com/assets/projects/bmoney/2transactionsadddesk.png)
+
+Log any financial event — **incoming money**, **expenses**, or **transfers between accounts**. Transfers allow for seamless management across multiple accounts without double-counting. Each entry supports custom labels and descriptions so you can record context that matters to you.
+
+---
+
+## Accounts
+
+![Accounts](https://content.beyondmebtw.com/assets/projects/bmoney/3accountsdesk.webp)
+
+Add and manage your **cash and bank accounts**, each displayed as a distinct card. View current balances, edit account details, and add new accounts as needed — keeping all your money in one organized view.
+
+---
+
+## Credit Cards
+
+![Credit Cards](https://content.beyondmebtw.com/assets/projects/bmoney/4creditcardsdesk.webp)
+
+Track your credit cards and their usage by logging transactions against them. Set **due dates** for each card to stay on top of billing cycles. The **Pay Bill** feature is transaction-based — it records the payment as a financial entry rather than functioning as an actual payment processor.
+
+### Credit Card Payment History
+
+![CC History](https://content.beyondmebtw.com/assets/projects/bmoney/4cchistorydesk.webp)
+
+Review a complete history of previously recorded card payments, giving you a clear picture of past billing and repayment patterns.
+
+---
+
+## Assets
+
+![Assets](https://content.beyondmebtw.com/assets/projects/bmoney/5assetsdesk.webp)
+
+Monitor financial assets such as **stocks, fixed deposits (FDs), loans**, and other holdings in a structured, easy-to-read view. Keep tabs on what you own and what you owe, all in one place.
+
+---
+
+## Subscriptions
+
+![Subscriptions](https://content.beyondmebtw.com/assets/projects/bmoney/6subscriptionsdesk.webp)
+
+Stay on top of recurring expenses by managing all your **active subscriptions** in one dedicated space. Track costs, renewal cycles, and avoid surprise charges.
+
+---
+
+## Net Worth
+
+![Net Worth](https://content.beyondmebtw.com/assets/projects/bmoney/7networthsdesk.webp)
+
+A consolidated view of your **total net worth**, factoring in all assets and liabilities. Understand the full picture of your financial health beyond just day-to-day cash flow.
+
+---
+
+## Categories & Labels
+
+| Categories | Labels |
+|---|---|
+| ![Categories](https://content.beyondmebtw.com/assets/projects/bmoney/8categoriesdesk.webp) | ![Labels](https://content.beyondmebtw.com/assets/projects/bmoney/8labelsdesk.webp) |
+
+Create and manage **custom categories and labels** tailored to how you think about your money. Organize transactions your way, with as much or as little granularity as you prefer.
+
+---
+
+## Currency Converter
+
+![Currency Converter](https://content.beyondmebtw.com/assets/projects/bmoney/9converterdesk.webp)
+
+A built-in **currency monitoring and conversion tool** to support international usability. Quickly reference exchange rates without leaving the app.
+
+---
+
+## Sync
+
+![Sync](https://content.beyondmebtw.com/assets/projects/bmoney/10syncdesk.webp)
+
+A dedicated sync page to ensure your data is always up to date and that the local cache reflects the latest version. Manual sync control gives you direct accessibility and confidence that nothing is out of date.
+
+---
+
+## Settings
+
+![Settings](https://content.beyondmebtw.com/assets/projects/bmoney/11settingsdesk.webp)
+
+Configure the app to your preferences:
+- **App Lock** — secure access to your financial data
+- **Currency Preference** — set your default display currency
+- **Data Export** — export everything as a **CSV** or **JSON** file for external use or backup
+
+---
+
+*Built by [Beyond Me Btw](https://beyondmebtw.com)*
+
+
 
 ## License
 

@@ -42,7 +42,7 @@ The creators and contributors of Beyond Money are not responsible for any financ
 
 ## Changelog
 
-View the changelog here : (Changelog)[https://github.com/pranav1211/beyond-money-public/blob/main/changelog.md]
+View the changelog here : [Changelog](https://github.com/pranav1211/beyond-money-public/blob/main/changelog.md)
 
 ## Getting Started
 

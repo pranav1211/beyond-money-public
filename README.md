@@ -13,6 +13,7 @@ Personal finance tracker PWA built with Vue 3 + Supabase. Track income, expenses
 - **Multi-Currency** — live exchange rates via Open Exchange Rates API
 - **Offline-First** — IndexedDB cache + sync queue, works without internet
 - **PWA** — installable on mobile and desktop
+- **App Lock** — Using your own device fingerprint, screen lock or face id lock the app for maximum privacy (Can be enabled via Settings)
 
 ## Tech Stack
 

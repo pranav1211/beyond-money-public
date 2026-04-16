@@ -16,28 +16,52 @@ const isDark = ref(getStoredTheme() === 'dark')
 const deferredPrompt = ref(null)
 const canInstall = ref(false)
 const isInstalled = ref(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true)
+const installStatus = ref('')
+
+function checkIfInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+}
 
 function onBeforeInstallPrompt(e) {
   e.preventDefault()
   deferredPrompt.value = e
   canInstall.value = true
   isInstalled.value = false
+  installStatus.value = ''
 }
 
 function onAppInstalled() {
   canInstall.value = false
   deferredPrompt.value = null
   isInstalled.value = true
+  installStatus.value = ''
 }
 
 async function installApp() {
-  if (!deferredPrompt.value) return
-  deferredPrompt.value.prompt()
-  const { outcome } = await deferredPrompt.value.userChoice
-  if (outcome === 'accepted') {
+  // Re-check installed state
+  if (checkIfInstalled()) {
+    isInstalled.value = true
     canInstall.value = false
+    deferredPrompt.value = null
+    installStatus.value = ''
+    return
   }
-  deferredPrompt.value = null
+
+  // Have a deferred prompt — use it
+  if (deferredPrompt.value) {
+    installStatus.value = ''
+    deferredPrompt.value.prompt()
+    const { outcome } = await deferredPrompt.value.userChoice
+    if (outcome === 'accepted') {
+      canInstall.value = false
+    }
+    deferredPrompt.value = null
+    return
+  }
+
+  // No prompt available — show guidance
+  installStatus.value = 'Use your browser menu to install this app'
+  setTimeout(() => { installStatus.value = '' }, 4000)
 }
 
 onMounted(() => {
@@ -141,10 +165,11 @@ defineExpose({ mobileOpen })
           </span>
         </label>
       </div>
-      <button class="install-btn" @click="installApp" :disabled="!canInstall && isInstalled">
+      <button class="install-btn" @click="installApp" :disabled="isInstalled">
         <span class="nav-icon">{{ isInstalled ? '✓' : '⤓' }}</span>
         <span class="nav-label">{{ isInstalled ? 'Installed' : 'Install App' }}</span>
       </button>
+      <span v-if="installStatus" class="install-status">{{ installStatus }}</span>
       <button class="logout-btn" @click="handleLogout">
         <span class="nav-icon">→</span>
         <span class="nav-label">Sign out</span>
@@ -326,6 +351,14 @@ defineExpose({ mobileOpen })
 .install-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.install-status {
+  font-size: 0.7rem;
+  color: var(--text-muted, #888);
+  text-align: center;
+  padding: 0 0.5rem;
+  margin-top: -0.25rem;
 }
 
 .logout-btn {

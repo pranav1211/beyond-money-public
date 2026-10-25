@@ -59,7 +59,7 @@ async function confirmDelete() {
       </header>
 
       <div class="card add-card">
-        <h3 class="card-title">Create Label</h3>
+        <h3 class="card-title">New label</h3>
         <div class="add-form">
           <input
             v-model="newName"
@@ -67,8 +67,8 @@ async function confirmDelete() {
             class="add-input"
             @keyup.enter="addLabel"
           />
-          <input v-model="newColor" type="color" class="color-input" />
-          <button class="btn-primary" @click="addLabel">Add Label</button>
+          <input v-model="newColor" type="color" class="color-input" aria-label="Label colour" />
+          <button class="btn-primary add-btn" @click="addLabel">Add label</button>
         </div>
       </div>
 
@@ -79,31 +79,41 @@ async function confirmDelete() {
       />
 
       <div v-if="labelsStore.labels.length" class="card labels-card">
-        <h3 class="card-title">Your Labels</h3>
+        <div class="section-header">
+          <h3 class="section-title">Your labels</h3>
+          <span class="section-count">{{ labelsStore.labels.length }}</span>
+        </div>
         <div class="labels-grid">
           <div
             v-for="label in labelsStore.labels"
             :key="label.id"
             class="label-item"
+            :style="{ '--c': label.color }"
           >
             <template v-if="editingId === label.id">
               <div class="edit-form">
-                <input v-model="editName" class="edit-input" />
-                <input v-model="editColor" type="color" class="color-input" />
+                <input v-model="editName" class="edit-input" aria-label="Label name" />
+                <input v-model="editColor" type="color" class="color-input" aria-label="Label colour" />
                 <div class="edit-actions">
+                  <button class="btn-sm btn-ghost" @click="editingId = null">Cancel</button>
                   <button class="btn-primary btn-sm" @click="saveEdit">Save</button>
-                  <button class="btn-sm" @click="editingId = null">Cancel</button>
                 </div>
               </div>
             </template>
             <template v-else>
               <div class="label-display">
-                <span class="color-swatch" :style="{ background: label.color }"></span>
-                <span class="label-name">{{ label.name }}</span>
+                <span class="label-chip">
+                  <span class="color-swatch"></span>
+                  <span class="label-name">{{ label.name }}</span>
+                </span>
               </div>
               <div class="label-actions">
-                <button class="btn-sm" @click="startEdit(label)">Edit</button>
-                <button class="btn-sm btn-danger" @click="deletingId = label.id">Delete</button>
+                <button class="icon-btn" title="Edit" aria-label="Edit" @click="startEdit(label)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                </button>
+                <button class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete" @click="deletingId = label.id">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
+                </button>
               </div>
             </template>
           </div>
@@ -125,7 +135,8 @@ async function confirmDelete() {
 .labels-page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
+  min-width: 0;
 }
 
 .page-header {
@@ -135,19 +146,25 @@ async function confirmDelete() {
 }
 
 .page-title {
-  font-size: 1.75rem;
-  font-weight: 700;
+  font-size: 1.6rem;
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
 
-.add-card {
+.add-card,
+.labels-card {
   padding: 24px;
+  min-width: 0;
+}
+
+.card-title,
+.section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .card-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
   margin-bottom: 16px;
 }
 
@@ -163,34 +180,71 @@ async function confirmDelete() {
   min-width: 200px;
 }
 
-.color-input {
-  width: 44px;
-  height: 40px;
-  padding: 4px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-primary);
-  cursor: pointer;
+.add-btn {
+  min-height: 48px;
 }
 
-.labels-card {
-  padding: 24px;
+.color-input {
+  width: 52px;
+  min-width: 52px;
+  height: 48px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 10px;
+}
+
+.color-input::-moz-color-swatch {
+  border: none;
+  border-radius: 10px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  flex: 1;
+}
+
+.section-count {
+  padding: 3px 11px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-dim);
 }
 
 .labels-grid {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
 }
 
 .label-item {
+  --c: var(--accent);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 10px 10px 10px 14px;
+  min-width: 0;
   background: var(--bg-elevated);
   border-radius: var(--radius-sm);
-  transition: background var(--transition);
+  transition: background-color var(--transition);
 }
 
 .label-item:hover {
@@ -200,38 +254,66 @@ async function confirmDelete() {
 .label-display {
   display: flex;
   align-items: center;
-  gap: 12px;
+  min-width: 0;
+}
+
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 5px 13px 5px 11px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--c) 16%, transparent);
 }
 
 .color-swatch {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
   flex-shrink: 0;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  background: var(--c);
 }
 
 .label-name {
-  font-weight: 500;
-  font-size: 0.95rem;
+  font-weight: 600;
+  font-size: 0.9rem;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .label-actions {
   display: flex;
-  gap: 8px;
-  opacity: 0;
-  transition: opacity var(--transition);
+  gap: 4px;
+  flex-shrink: 0;
 }
 
-.label-item:hover .label-actions {
-  opacity: 1;
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.icon-btn:hover {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.icon-btn--danger:hover {
+  color: var(--expense);
+  background: color-mix(in srgb, var(--expense) 12%, transparent);
 }
 
 .edit-form {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   flex-wrap: wrap;
 }
@@ -246,18 +328,48 @@ async function confirmDelete() {
   gap: 8px;
 }
 
-@media (max-width: 600px) {
-  .label-actions {
-    opacity: 1;
+.btn-sm {
+  padding: 9px 18px;
+  font-size: 0.85rem;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  .add-card,
+  .labels-card {
+    padding: 18px;
   }
 
   .add-form {
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
   }
 
   .add-input {
+    grid-column: 1 / -1;
     min-width: 0;
+  }
+
+  .edit-input {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .edit-actions {
+    flex: 1;
+  }
+
+  .edit-actions button {
+    flex: 1;
   }
 }
 </style>

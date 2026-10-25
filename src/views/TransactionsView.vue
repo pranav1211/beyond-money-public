@@ -16,6 +16,10 @@ const accountsStore = useAccountsStore()
 
 const editingTx = ref(null)
 const search = ref('')
+// Phones fold the six filter selects behind a toggle. The filters component
+// stays mounted either way: it emits the initial filter on mount.
+const showFilters = ref(false)
+const activeFilterCount = ref(0)
 const currentPage = ref(1)
 const perPage = 20
 
@@ -50,8 +54,15 @@ const paginatedTransactions = computed(() => {
   return filteredTransactions.value.slice(start, start + perPage)
 })
 
+// Last filters applied, so they can be restored after the edit form (which may
+// load the full history for loan maths) has run.
+const lastFilters = ref({})
+
 async function handleFilter(filters) {
+  lastFilters.value = filters
   currentPage.value = 1
+  // The year defaults to the current one, so it doesn't count as "active".
+  activeFilterCount.value = Object.keys(filters).filter(k => k !== 'year').length
   await transactionsStore.fetchTransactions(filters)
 }
 
@@ -67,6 +78,7 @@ async function handleUpdate(data) {
   const { _transfer, _fromAccountId, _toAccountId, ...submitData } = data
   await transactionsStore.updateTransaction(editingTx.value.id, submitData)
   editingTx.value = null
+  if (Object.keys(lastFilters.value).length) transactionsStore.fetchTransactions(lastFilters.value)
 }
 
 function goToPage(page) {
@@ -79,8 +91,8 @@ function goToPage(page) {
     <div class="transactions-page fade-in">
       <header class="page-header">
         <div class="balance-display">
-          <span class="balance-label">Total Balance</span>
-          <span class="balance-amount">{{ totalBalance.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }) }}</span>
+          <span class="balance-label">Across all accounts</span>
+          <span class="balance-amount num">{{ totalBalance.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }) }}</span>
         </div>
         <TransactionButton
           label="Add Transaction"
@@ -89,15 +101,26 @@ function goToPage(page) {
       </header>
 
       <div class="card filters-card">
-        <TransactionFilters @filter="handleFilter" />
-        <div class="search-bar">
-          <input
-            v-model="search"
-            type="text"
-            placeholder="Search by description..."
-            class="search-input"
-            @input="currentPage = 1"
-          />
+        <div class="filters-top">
+          <div class="search-bar">
+            <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></svg>
+            <input
+              v-model="search"
+              type="search"
+              placeholder="Search transactions"
+              class="search-input"
+              aria-label="Search transactions by description"
+              @input="currentPage = 1"
+            />
+          </div>
+          <button type="button" class="filters-toggle" :aria-expanded="showFilters" @click="showFilters = !showFilters">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4" /></svg>
+            Filters
+            <span v-if="activeFilterCount" class="filters-count">{{ activeFilterCount }}</span>
+          </button>
+        </div>
+        <div class="filters-body" :class="{ open: showFilters }">
+          <TransactionFilters @filter="handleFilter" />
         </div>
       </div>
 
@@ -139,7 +162,7 @@ function goToPage(page) {
 .transactions-page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .page-header {
@@ -157,57 +180,80 @@ function goToPage(page) {
 }
 
 .balance-label {
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   color: var(--text-muted);
 }
 
 .balance-amount {
   font-size: 2rem;
-  font-weight: 700;
-  color: var(--warning);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
 
 .filters-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: 20px 24px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
+.filters-top {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 .search-bar {
-  width: 100%;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.search-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .search-input {
   width: 100%;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm, 8px);
-  border: 1px solid var(--border-color);
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  padding: 12px 16px 12px 44px;
+  border-radius: var(--radius-pill);
+  font-size: 0.92rem;
+}
+
+.filters-toggle {
+  display: none;
+  flex-shrink: 0;
+  gap: 8px;
+  padding: 11px 16px;
   font-size: 0.88rem;
-  outline: none;
-  transition: border-color 0.2s;
 }
 
-.search-input::placeholder {
-  color: var(--text-muted);
+.filters-toggle[aria-expanded='true'] {
+  background: var(--accent-dim);
+  color: var(--accent);
 }
 
-.search-input:focus {
-  border-color: var(--accent);
+.filters-count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  font-size: 0.72rem;
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .list-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
   padding: 0;
   overflow: hidden;
 }
@@ -221,30 +267,26 @@ function goToPage(page) {
 }
 
 .page-btn {
-  padding: 8px 14px;
-  border-radius: var(--radius-sm, 8px);
-  border: 1px solid var(--border-color);
+  min-width: 40px;
+  padding: 9px 14px;
   background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.15s;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  font-weight: 600;
 }
 
 .page-btn:hover:not(:disabled) {
   background: var(--bg-elevated);
-  border-color: var(--accent-dim);
+  color: var(--text-primary);
 }
 
 .page-btn.active {
   background: var(--accent);
-  color: var(--bg-primary);
-  border-color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .page-btn:disabled {
   opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .page-ellipsis {
@@ -252,14 +294,30 @@ function goToPage(page) {
   padding: 0 4px;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
   .page-header {
-    flex-direction: column;
-    align-items: flex-start;
+    align-items: flex-end;
+  }
+
+  .balance-amount {
+    font-size: 1.6rem;
   }
 
   .filters-card {
-    padding: 16px;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .filters-toggle {
+    display: inline-flex;
+  }
+
+  .filters-body {
+    display: none;
+  }
+
+  .filters-body.open {
+    display: block;
   }
 }
 </style>

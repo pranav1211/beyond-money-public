@@ -1,7 +1,7 @@
-# Beyond Money — V 2.1.5
+# Beyond Money — V 3.0.1
 
-Personal finance tracker to track income, expenses, credit cards, assets, subscriptions, and net worth — all in one place.
-Beyond Money is designed around simplicity and control. Every major feature flows naturally from a central dashboard, letting you monitor, record, and analyze your finances without friction. 
+Personal finance tracker to track income, expenses, credit cards, loans, assets, subscriptions, and net worth — all in one place.
+Beyond Money is designed around simplicity and control. Every major feature flows naturally from a central dashboard, letting you monitor, record, and analyze your finances without friction.
 Built personally for me, available to everyone to explore.
 
 
@@ -17,28 +17,33 @@ The creators and contributors of Beyond Money are not responsible for any financ
 
 ## Features
 
-- **Accounts** — manage savings, cash, and wallet balances
-- **Transactions** — income, expenses, and transfers with categories and labels
-- **Credit Cards** — track cards, billing cycles, and per-card expenses
-- **Assets** — FDs, RDs, investments, PPF, and more
-- **Subscriptions** — recurring services with billing cycle tracking
-- **Net Worth** — overview across all accounts and assets
-- **Multi-Currency** — live exchange rates via Open Exchange Rates API
-- **Offline-First** — IndexedDB cache + sync queue, works without internet
+- **Dashboard** — what's left this month, money in / spent / invested, net worth at a glance, recent transactions
+- **Accounts** — savings, cash, and wallet balances
+- **Transactions** — income, expenses, and transfers with categories and labels; grouped by day on mobile
+- **Credit Cards** — cards shown as card faces, per-card expenses, partial payments, utilization, due dates
+- **Loans** — money lent, organised by person. Record any payment and it settles their oldest loans first, settle everything at once, or pay one specific loan
+- **Assets** — FDs, RDs, mutual funds, stocks (multi-lot), gold, PPF, and more, with optional live stock prices
+- **Subscriptions** — recurring services with due and overdue tracking
+- **Net Worth** — month-by-month history, change vs last month, insights, and an allocation breakdown
+- **Month Report** — a full monthly breakdown you can save as a PDF
+- **Multi-Currency** — live exchange rates via Open Exchange Rates
+- **Offline-First** — every page and every add / edit / delete works offline; changes sync when you're back online
 - **PWA** — installable on mobile and desktop
-- **Mobile** — Made responsive for mobile use and various screen sizes
-- **App Lock** — Using your own device fingerprint, screen lock or face id lock the app for maximum privacy. For Desktops a Passkey is created (Can be enabled via Settings)
+- **App Lock** — lock the app with your device fingerprint, face, or screen lock (a passkey on desktop). Enable it in Settings
+- **Light & dark themes**
 
 ## Tech Stack
 
 | Layer | Tech |
 |-------|------|
 | Frontend | Vue 3, Pinia, Vue Router, Vite |
-| Charts | Chart.js + vue-chartjs |
+| Charts | Chart.js + vue-chartjs, hand-drawn SVG |
 | Backend / DB | Supabase (Postgres + Auth + RLS) |
 | Auth | Google OAuth via Supabase |
-| Offline | IndexedDB + Service Worker |
+| Offline | IndexedDB + Service Worker (whole app pre-cached) |
 | Currency | Open Exchange Rates API |
+| Stock prices | Supabase Edge Function (optional) |
+| Fonts | Manrope + Sora, bundled with the app |
 
 ## Changelog
 
@@ -56,8 +61,8 @@ View the changelog here : [Changelog](https://github.com/pranav1211/beyond-money
 ### Step 1 — Clone and install
 
 ```bash
-git clone https://github.com/your-username/beyond-money.git
-cd beyond-money
+git clone https://github.com/pranav1211/beyond-money-public.git
+cd beyond-money-public
 npm install
 ```
 
@@ -68,11 +73,10 @@ npm install
 
 ### Step 3 — Set up the database
 
-1. Open **SQL Editor** in your Supabase dashboard
-2. Copy and run [`supabase/schema/schema.sql`](supabase/schema/schema.sql)
-   > Run tables in dependency order. Tables without foreign key dependencies go first: `accounts`, `categories`, `labels`, `credit_cards`, `exchange_rate_cache`. Then the rest: `cc_expenses`, `transactions`, `transaction_labels`, `assets`, `subscriptions`.
-3. The schema file includes RLS policies — every user-scoped table is locked down so users can only access their own data
-4. At the end of that SQL file is a function to edit the users. Edit the `restrict_to_owner()` function at the bottom of the schema and replace the placeholder emails with the Google account(s) you want to allow
+1. Open [`supabase/schema/schema.sql`](supabase/schema/schema.sql) and **edit the email allowlist in section 6** (`restrict_to_owner`). Put in the Google account(s) that should be able to sign in. Anyone else is rejected, and if you leave the placeholders, every sign-in fails with "Database error saving new user".
+2. In your Supabase dashboard, open **SQL Editor**, paste the whole file and run it.
+
+The file is the complete, current schema in one piece: tables, indexes, Row Level Security policies (every user only ever sees their own rows), and the sign-in allowlist. It's safe to run again, which is also how you upgrade: if you set up an older version, run the latest file and it adds whatever is missing without touching your data.
 
 ### Step 4 — Set up Google OAuth
 
@@ -90,7 +94,7 @@ npm install
 
 ### Step 5 — Environment variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root (it is git-ignored, never commit it):
 
 ```env
 VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
@@ -98,7 +102,19 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_EXCHANGE_RATES_APP_ID=your-openexchangerates-app-id
 ```
 
-### Step 6 — Run
+Optional: `VITE_APP_BASE=/some/path/` if you serve the app from a sub-path.
+
+### Step 6 (optional) — Live stock prices
+
+Stock holdings can refresh their price from Yahoo Finance through a small Supabase Edge Function. It needs no keys:
+
+```bash
+npx supabase functions deploy stock-quote --project-ref <your-project-ref>
+```
+
+Skip this and everything else still works; you can enter prices by hand.
+
+### Step 7 — Run
 
 ```bash
 npm run dev
@@ -109,61 +125,77 @@ Open the URL shown in your terminal. Sign in with Google, and you're in.
 ## Project Structure
 
 ```
-beyond-money/
+beyond-money-public/
 ├── src/
-│   ├── components/       # Vue components
-│   ├── composables/      # Shared logic (useAuth, useSupabase, etc.)
+│   ├── components/       # Vue components (dashboard, forms, layout, shared, transactions)
+│   ├── composables/      # Shared logic (net worth, biometric lock, submit guard, …)
 │   ├── views/            # Page-level components
-│   ├── stores/           # Pinia stores
-│   ├── router/           # Vue Router config
-│   ├── lib/              # Supabase client, utilities
+│   ├── stores/           # Pinia stores (IndexedDB-first, with an offline sync queue)
+│   ├── router/           # Vue Router config (routes are code-split)
+│   ├── lib/              # Supabase client, IndexedDB, money, loans, dates
 │   └── version.js        # App version
 ├── supabase/
 │   ├── schema/
-│       └── schema.sql    # Full database schema + RLS policies
-├── public/               # Static assets + PWA manifest
-└── vite.config.js
+│   │   └── schema.sql    # Complete database schema (re-runnable)
+│   └── functions/
+│       └── stock-quote/  # Optional edge function for live stock prices
+├── test/
+│   └── offline-e2e.mjs   # Offline end-to-end test (headless Chrome)
+├── public/               # Static assets, logo, PWA manifest, service worker
+└── vite.config.js        # Also injects the build ID + pre-cache list into the service worker
 ```
 
 ## Database
 
-Full schema with RLS: [`supabase/schema/schema.sql`](supabase/schema/schema.sql)
+Complete schema: [`supabase/schema/schema.sql`](supabase/schema/schema.sql)
 
 | Table | Description |
 |-------|-------------|
 | `accounts` | Bank accounts, cash, wallets |
-| `assets` | FDs, RDs, investments, other assets |
 | `categories` | Income/expense categories |
-| `credit_cards` | Credit card details and billing info |
-| `cc_expenses` | Expenses tied to a credit card |
-| `transactions` | Core financial transactions |
-| `labels` | User-defined tags for transactions |
-| `transaction_labels` | Many-to-many join (transactions ↔ labels) |
-| `subscriptions` | Recurring service subscriptions |
-| `exchange_rate_cache` | Cached currency rates (not user-scoped) |
+| `labels` | User-defined tags |
+| `currencies` | Currencies you use, and your default |
+| `credit_cards` | Card details, billing info, partial payments |
+| `cc_expenses` | Purchases on a credit card |
+| `cc_expense_labels` | Labels on card purchases |
+| `assets` | FDs, RDs, funds, stocks, gold, other assets |
+| `subscriptions` | Recurring services |
+| `transactions` | Income, expenses, transfers, loans and repayments |
+| `transaction_labels` | Labels on transactions |
+| `networth_snapshots` | Month-end net worth, so history stays fixed |
+| `exchange_rate_cache` | Shared exchange-rate cache (not per-user) |
+| `stock_price_cache` | Shared stock-price cache (not per-user) |
 
 ```
 auth.users
   ├── accounts
-  ├── assets
   ├── categories
-  ├── credit_cards
-  │     └── cc_expenses
-  ├── transactions
-  │     └── transaction_labels ↔ labels
   ├── labels
-  └── subscriptions
+  ├── currencies
+  ├── credit_cards
+  │     └── cc_expenses ── cc_expense_labels ↔ labels
+  ├── assets
+  ├── subscriptions
+  ├── transactions ── transaction_labels ↔ labels
+  │     └── (lend_repayment) loan_id → transactions
+  └── networth_snapshots
 
-exchange_rate_cache (standalone)
+exchange_rate_cache, stock_price_cache (shared)
 ```
 
-## Build
+## Build and test
 
 ```bash
-npm run build      # Production build → dist/
-npm run preview    # Preview the build locally
+npm run build         # Production build → dist/
+npm run preview       # Preview the build locally
+npm run test:offline  # Offline end-to-end test (run after a build)
 ```
+
+The offline test opens the built app in headless Chrome, goes offline, adds a transaction and checks it is saved and queued for sync. It looks for Chrome in the usual places; point it elsewhere with `CHROME_BIN=/path/to/chrome`.
+
 ## Preview
+
+> The screenshots below show the 2.x design. The 3.0 redesign keeps the same pages with a new look.
 
 ## Dashboard
 
@@ -250,7 +282,10 @@ Configure the app to your preferences:
 
 ## License
 
-This project is licensed under the **MIT License**:
-- **[MIT License](LICENSE)**: A permissive license allowing free use, modification, and distribution for both personal and commercial purposes, with attribution.
+Beyond Money is licensed under the **[PolyForm Noncommercial License 1.0.0](LICENSE)**.
 
-For more details, see the [MIT License](LICENSE) file included in this repository.
+- **Free for non-commercial use:** personal use, study, research, hobby projects, and use by charities, schools and similar organisations.
+- **Credit is required:** any copy or modified version you share must include the license and the `Required Notice` line crediting Pranav Veeraghanta as the author.
+- **No commercial use** without permission. That includes selling it, offering it as a paid service, or using it inside a business. To ask about commercial use, contact the author through [GitHub](https://github.com/pranav1211).
+
+Versions up to 2.1.5 were released under the MIT License; that license still applies to those versions.

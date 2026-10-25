@@ -34,6 +34,10 @@ export const useAccountsStore = defineStore('accounts', () => {
 
     if (!navigator.onLine) { loading.value = false; return accounts.value }
 
+    // Drain queued offline writes before reading so the fetch reflects them
+    // instead of overwriting un-pushed records.
+    await useSyncStore().flushPending()
+
     loading.value = !loaded.value
     const { data, error: err } = await supabase.from('accounts').select('*').order('name')
     if (err) {
@@ -47,21 +51,24 @@ export const useAccountsStore = defineStore('accounts', () => {
     return accounts.value
   }
 
+  async function addAccountOffline(normalized) {
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const localEntry = { ...normalized, id: tempId }
+    accounts.value.push(localEntry)
+    loaded.value = true
+    await idbSet('accounts', accounts.value)
+    await useSyncStore().enqueue({ table: 'accounts', action: 'insert', payload: normalized })
+    return localEntry
+  }
+
   async function addAccount(payload) {
     const normalized = normalizeAccount(payload)
 
-    // Try Supabase first
+    // Offline: create temp local entry and queue, no network.
+    if (!navigator.onLine) return addAccountOffline(normalized)
+
     const { data, error: err } = await supabase.from('accounts').insert(normalized).select().single()
-    if (err) {
-      // Offline: create temp local entry and queue
-      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-      const localEntry = { ...normalized, id: tempId }
-      accounts.value.push(localEntry)
-      loaded.value = true
-      idbSet('accounts', accounts.value)
-      useSyncStore().enqueue({ table: 'accounts', action: 'insert', payload: normalized })
-      return localEntry
-    }
+    if (err) return addAccountOffline(normalized)
 
     accounts.value.push(data)
     loaded.value = true
@@ -77,7 +84,12 @@ export const useAccountsStore = defineStore('accounts', () => {
     if (index !== -1) accounts.value[index] = { ...accounts.value[index], ...normalized }
     idbSet('accounts', accounts.value)
 
-    // Try Supabase
+    // Offline: local state already updated — queue and skip the network.
+    if (!navigator.onLine) {
+      await useSyncStore().enqueue({ table: 'accounts', action: 'update', recordId: id, payload: normalized })
+      return accounts.value[index]
+    }
+
     const { data, error: err } = await supabase.from('accounts').update(normalized).eq('id', id).select().single()
     if (err) {
       // Queue for retry - local state already updated
@@ -92,16 +104,20 @@ export const useAccountsStore = defineStore('accounts', () => {
 
   async function deleteAccount(id) {
     // Update local state immediately
-    const prev = [...accounts.value]
     accounts.value = accounts.value.filter(account => account.id !== id)
     idbSet('accounts', accounts.value)
 
+    const isTemp = String(id).startsWith('temp_')
+
+    // Offline: queue (real records only) and skip the network.
+    if (!navigator.onLine) {
+      if (!isTemp) await useSyncStore().enqueue({ table: 'accounts', action: 'delete', recordId: id })
+      return
+    }
+
     const { error: err } = await supabase.from('accounts').delete().eq('id', id)
-    if (err) {
-      // Queue for retry if it's a real server record (not temp)
-      if (!String(id).startsWith('temp_')) {
-        useSyncStore().enqueue({ table: 'accounts', action: 'delete', recordId: id })
-      }
+    if (err && !isTemp) {
+      useSyncStore().enqueue({ table: 'accounts', action: 'delete', recordId: id })
     }
   }
 

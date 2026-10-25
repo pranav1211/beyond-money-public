@@ -4,6 +4,7 @@ import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { useTransactionsStore } from '../../stores/transactions'
 import { useCategoriesStore } from '../../stores/categories'
+import { inDefault } from '../../lib/money'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
@@ -20,7 +21,7 @@ const chartData = computed(() => {
 
   expenses.forEach(t => {
     if (!byCategory[t.category_id]) byCategory[t.category_id] = 0
-    byCategory[t.category_id] += t.amount_inr
+    byCategory[t.category_id] += inDefault(t)
   })
 
   const labels = []

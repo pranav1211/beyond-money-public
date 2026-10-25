@@ -1,11 +1,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useCurrenciesStore } from '../../stores/currencies'
 
 const props = defineProps({
   account: { type: Object, default: null },
 })
 
 const emit = defineEmits(['submit', 'cancel'])
+
+const currenciesStore = useCurrenciesStore()
 
 const form = ref({
   name: '',
@@ -15,9 +18,12 @@ const form = ref({
   is_active: true,
 })
 
-onMounted(() => {
+onMounted(async () => {
+  await currenciesStore.fetchCurrencies()
   if (props.account) {
     form.value = { ...props.account }
+  } else {
+    form.value.currency = currenciesStore.defaultCurrency?.code || 'INR'
   }
 })
 
@@ -28,44 +34,50 @@ function handleSubmit() {
 
 <template>
   <form class="account-form" @submit.prevent="handleSubmit">
-    <div class="form-group">
-      <label class="form-label">Name</label>
-      <input v-model="form.name" class="form-input" required />
-    </div>
+    <div class="form-grid">
+      <div class="field field--wide">
+        <label for="account-name">Name</label>
+        <input id="account-name" v-model="form.name" placeholder="e.g. Main savings" required />
+      </div>
 
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Type</label>
-        <select v-model="form.type" class="form-input">
+      <div class="field">
+        <label for="account-type">Type</label>
+        <select id="account-type" v-model="form.type">
           <option value="savings">Savings</option>
           <option value="cash">Cash</option>
           <option value="wallet">Wallet</option>
         </select>
       </div>
-      <div class="form-group">
-        <label class="form-label">Currency</label>
-        <select v-model="form.currency" class="form-input">
-          <option value="INR">INR</option>
-          <option value="USD">USD</option>
+
+      <div class="field">
+        <label for="account-currency">Currency</label>
+        <select id="account-currency" v-model="form.currency">
+          <option v-for="c in currenciesStore.currencies" :key="c.code" :value="c.code">
+            {{ c.code }} ({{ c.symbol }})
+          </option>
         </select>
       </div>
-    </div>
 
-    <div class="form-group">
-      <label class="form-label">Current Balance</label>
-      <input v-model.number="form.current_balance" type="number" step="0.01" class="form-input" />
-    </div>
+      <div class="field field--wide">
+        <label for="account-balance">Current balance</label>
+        <div class="amount-wrap">
+          <span class="currency-mark">{{ currenciesStore.symbolOf(form.currency) }}</span>
+          <input id="account-balance" v-model.number="form.current_balance" type="number" step="0.01" inputmode="decimal" placeholder="0.00" />
+        </div>
+      </div>
 
-    <div class="form-group">
-      <label class="checkbox-label">
-        <input v-model="form.is_active" type="checkbox" class="form-checkbox" />
-        <span class="checkbox-text">Active</span>
+      <label class="toggle-row field--wide">
+        <span class="toggle-copy">
+          <span class="toggle-title">Active</span>
+          <span class="toggle-hint">Turn off for accounts you no longer use</span>
+        </span>
+        <input v-model="form.is_active" type="checkbox" class="switch" role="switch" />
       </label>
     </div>
 
     <div class="form-actions">
-      <button type="submit" class="btn-primary">{{ account ? 'Update' : 'Add' }} Account</button>
-      <button type="button" class="btn-cancel" @click="emit('cancel')">Cancel</button>
+      <button type="submit" class="btn-primary">{{ account ? 'Update' : 'Add' }} account</button>
+      <button type="button" @click="emit('cancel')">Cancel</button>
     </div>
   </form>
 </template>
@@ -74,106 +86,162 @@ function handleSubmit() {
 .account-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
 }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-}
-
-.form-row {
+.form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 16px;
 }
 
-.form-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.field {
+  min-width: 0;
 }
 
-.form-input {
-  padding: 10px 14px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  transition: border-color var(--transition), box-shadow var(--transition);
+.field--wide {
+  grid-column: 1 / -1;
 }
 
-.form-input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-dim);
-}
-
-.checkbox-label {
+/* Balance reads like the transaction amount: currency mark + Sora figure. */
+.amount-wrap {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 0 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.amount-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-dim);
+}
+
+.amount-wrap input {
+  min-width: 0;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.amount-wrap input:focus {
+  box-shadow: none;
+  background: transparent;
+}
+
+.currency-mark {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
   cursor: pointer;
   user-select: none;
-  margin: 0;
 }
 
-.form-checkbox {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
-  cursor: pointer;
+.toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
 }
 
-.checkbox-text {
-  font-size: 0.9rem;
+.toggle-title {
+  font-size: 0.92rem;
+  font-weight: 700;
   color: var(--text-primary);
+}
+
+.toggle-hint {
+  font-size: 0.78rem;
   font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Pill switch drawn on the native checkbox, so v-model and keyboard work as-is. */
+.switch {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  min-width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  box-shadow: inset 0 0 0 1px var(--border-light);
+  cursor: pointer;
+  transition: background-color var(--transition), box-shadow var(--transition);
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform var(--transition), background-color var(--transition);
+}
+
+.switch:checked {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.switch:checked::after {
+  transform: translateX(18px);
+  background: var(--accent-ink);
+}
+
+.switch:focus,
+.switch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--accent-dim);
 }
 
 .form-actions {
   display: flex;
-  gap: 12px;
-  padding-top: 8px;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .form-actions .btn-primary {
-  padding: 10px 24px;
-  background: var(--accent);
-  color: #0d1117;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all var(--transition);
+  min-width: 160px;
 }
 
-.form-actions .btn-primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  transform: translateY(-1px);
+@media (max-width: 380px) {
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-.form-actions .btn-cancel {
-  padding: 10px 24px;
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.form-actions .btn-cancel:hover {
-  background: var(--bg-elevated);
-  border-color: var(--border-light);
-  color: var(--text-primary);
+@media (max-width: 480px) {
+  .form-actions {
+    flex-direction: column;
+  }
 }
 </style>

@@ -11,6 +11,9 @@ function normalizeCard(payload) {
     last_four: payload.last_four?.trim() || '',
     credit_limit: payload.credit_limit === '' || payload.credit_limit == null ? null : Number(payload.credit_limit),
     current_balance: Number(payload.current_balance || 0),
+    // Display-only amount already paid toward the current card spend.
+    prepaid_amount: Number(payload.prepaid_amount || 0),
+    currency: payload.currency || 'INR',
     due_date: payload.due_date || null,
     expiry_month: payload.expiry_month || null,
   }

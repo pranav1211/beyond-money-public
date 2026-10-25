@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import TransactionRow from './TransactionRow.vue'
 import EmptyState from '../shared/EmptyState.vue'
+import CandleLoader from '../shared/CandleLoader.vue'
+import TransactionCards from './TransactionCards.vue'
 
 const props = defineProps({
   transactions: { type: Array, required: true },
@@ -43,7 +45,15 @@ function handleEdit(tx) {
       message="Add your first transaction to get started."
     />
 
-    <div v-else class="table-container">
+    <TransactionCards
+      v-if="transactions.length"
+      class="mobile-only"
+      :transactions="transactions"
+      @edit="handleEdit"
+      @delete="id => emit('delete', id)"
+    />
+
+    <div v-if="transactions.length" class="table-container desktop-only">
       <table class="tx-table">
         <thead>
           <tr>
@@ -72,17 +82,14 @@ function handleEdit(tx) {
     </div>
 
     <div v-if="loading" class="tx-loading">
-      <span class="loading-text">Loading transactions...</span>
+      <CandleLoader size="sm" />
     </div>
   </div>
 </template>
 
 <style scoped>
 .tx-list-wrapper {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  overflow: hidden;
+  min-width: 0;
 }
 
 .table-container {
@@ -94,22 +101,14 @@ function handleEdit(tx) {
   border-collapse: separate;
   border-spacing: 0;
   background: transparent;
-  border: none;
-  border-radius: 0;
-}
-
-.tx-table thead {
-  background: var(--bg-elevated);
 }
 
 .tx-table th {
-  font-size: 0.73rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   color: var(--text-muted);
   text-align: left;
-  padding: 12px 16px;
+  padding: 16px 16px 12px;
   border-bottom: 1px solid var(--border-color);
   white-space: nowrap;
 }
@@ -119,35 +118,39 @@ function handleEdit(tx) {
 }
 
 .tx-table :deep(td) {
-  padding: 12px 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border-color);
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   color: var(--text-primary);
 }
 
-.tx-table :deep(tbody tr:last-child td) {
+.tx-table :deep(tbody:last-child tr:last-child td) {
   border-bottom: none;
 }
 
+/* A slightly stronger rule marks where a new day starts. */
 .day-group + .day-group :deep(tr:first-child td) {
-  border-top: 3px solid var(--text-muted, rgba(255, 255, 255, 0.25));
+  border-top: 1px solid var(--border-light);
 }
 
 .tx-loading {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
 }
 
-.loading-text {
-  font-size: 0.85rem;
-  color: var(--text-muted);
+.mobile-only {
+  display: none;
 }
 
+/* Phones get the expandable card list; the table stays desktop-only. */
 @media (max-width: 768px) {
-  .tx-table th,
-  .tx-table :deep(td) {
-    padding: 10px 12px;
-    font-size: 0.8rem;
+  .mobile-only {
+    display: flex;
+  }
+
+  .desktop-only {
+    display: none;
   }
 }
 </style>

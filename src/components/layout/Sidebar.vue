@@ -1,91 +1,66 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
+import { useCurrencyStore } from '../../stores/currency'
 import { getStoredTheme, applyTheme } from '../../lib/theme'
 import { APP_VERSION } from '../../version'
+import { usePwaInstall } from '../../composables/usePwaInstall'
+import AccountSwitcher from './AccountSwitcher.vue'
+import AppIcon from '../shared/AppIcon.vue'
+
+// Bundled in public/ so the app (and offline installs) don't depend on an
+// external host. BASE_URL keeps it working under a custom VITE_APP_BASE.
+const logoSrc = `${import.meta.env.BASE_URL}logo.png`
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const currencyStore = useCurrencyStore()
+
+const ratesStale = computed(() => {
+  if (!currencyStore.lastFetched) return true
+  const age = Date.now() - new Date(currencyStore.lastFetched).getTime()
+  return age > 24 * 60 * 60 * 1000
+})
 
 const mobileOpen = ref(false)
 const isDark = ref(getStoredTheme() === 'dark')
 
-// PWA install prompt
-const deferredPrompt = ref(null)
-const canInstall = ref(false)
-const isInstalled = ref(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true)
+// PWA install — listener is attached at module load (from main.js) so
+// the early-firing `beforeinstallprompt` event isn't missed.
+const { isInstalled, install } = usePwaInstall()
 const installStatus = ref('')
 
-function checkIfInstalled() {
-  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
-}
-
-function onBeforeInstallPrompt(e) {
-  e.preventDefault()
-  deferredPrompt.value = e
-  canInstall.value = true
-  isInstalled.value = false
-  installStatus.value = ''
-}
-
-function onAppInstalled() {
-  canInstall.value = false
-  deferredPrompt.value = null
-  isInstalled.value = true
-  installStatus.value = ''
-}
-
 async function installApp() {
-  // Re-check installed state
-  if (checkIfInstalled()) {
-    isInstalled.value = true
-    canInstall.value = false
-    deferredPrompt.value = null
-    installStatus.value = ''
+  installStatus.value = ''
+  const { status } = await install()
+
+  if (status === 'ios-guidance') {
+    installStatus.value = 'Tap Share, then "Add to Home Screen"'
+    setTimeout(() => { installStatus.value = '' }, 5000)
     return
   }
-
-  // Have a deferred prompt — use it
-  if (deferredPrompt.value) {
-    installStatus.value = ''
-    deferredPrompt.value.prompt()
-    const { outcome } = await deferredPrompt.value.userChoice
-    if (outcome === 'accepted') {
-      canInstall.value = false
-    }
-    deferredPrompt.value = null
-    return
+  if (status === 'manual-guidance') {
+    installStatus.value = 'Open your browser menu and pick Install / Add to Home Screen'
+    setTimeout(() => { installStatus.value = '' }, 5000)
   }
-
-  // No prompt available — show guidance
-  installStatus.value = 'Use your browser menu to install this app'
-  setTimeout(() => { installStatus.value = '' }, 4000)
 }
-
-onMounted(() => {
-  window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
-  window.addEventListener('appinstalled', onAppInstalled)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
-  window.removeEventListener('appinstalled', onAppInstalled)
-})
 
 const links = [
-  { to: '/', label: 'Dashboard', icon: '◫' },
-  { to: '/transactions', label: 'Transactions', icon: '↹' },
-  { to: '/accounts', label: 'Accounts', icon: '◎' },
-  { to: '/credit-cards', label: 'Credit Cards', icon: '▣' },
-  { to: '/assets', label: 'Assets', icon: '◇' },
-  { to: '/subscriptions', label: 'Subscriptions', icon: '◌' },
-  { to: '/net-worth', label: 'Net Worth', icon: '△' },
-  { to: '/organize', label: 'Labels & Categories', icon: '☷' },
-  { to: '/converter', label: 'Converter', icon: '↻' },
-  { to: '/sync', label: 'Sync', icon: '⇅' },
-  { to: '/settings', label: 'Settings', icon: '⚙' },
+  { to: '/', label: 'Dashboard', icon: 'dashboard' },
+  { to: '/transactions', label: 'Transactions', icon: 'transactions' },
+  { to: '/accounts', label: 'Accounts', icon: 'accounts' },
+  { to: '/credit-cards', label: 'Credit Cards', icon: 'cards' },
+  { to: '/assets', label: 'Assets', icon: 'assets' },
+  { to: '/subscriptions', label: 'Subscriptions', icon: 'subscriptions' },
+  { to: '/loans', label: 'Loans', icon: 'loans' },
+  { to: '/net-worth', label: 'Net Worth', icon: 'networth' },
+  { to: '/organize', label: 'Labels & Categories', icon: 'labels' },
+  { to: '/converter', label: 'Currency', icon: 'currency' },
+  // deskOnly: on phones these move to the profile menu (TopBar avatar).
+  { to: '/sync', label: 'Sync', icon: 'sync', deskOnly: true },
+  { to: '/settings', label: 'Settings', icon: 'settings', deskOnly: true },
 ]
 
 function isActive(path) {
@@ -114,8 +89,8 @@ defineExpose({ mobileOpen })
 
 <template>
   <!-- Mobile hamburger button -->
-  <button class="hamburger" @click="mobileOpen = !mobileOpen" :class="{ open: mobileOpen }">
-    <span></span><span></span><span></span>
+  <button class="hamburger" @click="mobileOpen = !mobileOpen" :class="{ open: mobileOpen }" :aria-label="mobileOpen ? 'Close menu' : 'Open menu'">
+    <AppIcon :name="mobileOpen ? 'close' : 'menu'" :size="22" />
   </button>
 
   <!-- Overlay -->
@@ -123,7 +98,7 @@ defineExpose({ mobileOpen })
 
   <aside class="sidebar" :class="{ 'sidebar--open': mobileOpen }">
     <div class="sidebar-header">
-      <div class="brand-mark"><img src="https://content.beyondmebtw.com/assets/bmb_logos/bmbmoney.png" alt="BeyondMoney Logo" /></div>
+      <div class="brand-mark"><img :src="logoSrc" alt="BeyondMoney Logo" /></div>
       <div class="brand-copy">
         <div class="brand-title">Beyond Money</div>
         <div class="brand-version">v{{ APP_VERSION }}</div>
@@ -141,17 +116,22 @@ defineExpose({ mobileOpen })
         v-for="link in links"
         :key="link.to"
         class="nav-link"
-        :class="{ active: isActive(link.to) }"
+        :class="{ active: isActive(link.to), 'desk-only': link.deskOnly }"
         @click.prevent="navigateTo(link.to)"
         href="#"
       >
-        <span class="nav-icon">{{ link.icon }}</span>
+        <span class="nav-icon"><AppIcon :name="link.icon" /></span>
         <span class="nav-label">{{ link.label }}</span>
+        <span
+          v-if="link.to === '/converter' && ratesStale"
+          class="stale-dot"
+          title="Exchange rates may be out of date — open Currency to refresh"
+        ></span>
       </a>
     </nav>
 
     <div class="sidebar-bottom">
-      <div class="theme-row">
+      <div class="theme-row desk-only">
         <span class="nav-label theme-label">Theme</span>
         <label class="switch" @click.prevent="toggleTheme">
           <input type="checkbox" :checked="!isDark" />
@@ -166,12 +146,13 @@ defineExpose({ mobileOpen })
         </label>
       </div>
       <button class="install-btn" @click="installApp" :disabled="isInstalled">
-        <span class="nav-icon">{{ isInstalled ? '✓' : '⤓' }}</span>
+        <span class="nav-icon"><AppIcon :name="isInstalled ? 'installed' : 'install'" /></span>
         <span class="nav-label">{{ isInstalled ? 'Installed' : 'Install App' }}</span>
       </button>
       <span v-if="installStatus" class="install-status">{{ installStatus }}</span>
-      <button class="logout-btn" @click="handleLogout">
-        <span class="nav-icon">→</span>
+      <AccountSwitcher v-if="auth.user" class="desk-only" />
+      <button class="logout-btn desk-only" @click="handleLogout">
+        <span class="nav-icon"><AppIcon name="signout" /></span>
         <span class="nav-label">Sign out</span>
       </button>
     </div>
@@ -180,44 +161,35 @@ defineExpose({ mobileOpen })
 
 <style scoped>
 .sidebar {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
-  min-height: 100vh;
-  padding: 18px 14px;
-  background: rgba(8, 16, 30, 0.82);
-  border-right: 1px solid var(--border-color);
-  backdrop-filter: blur(18px);
+  height: 100vh;
+  padding: 22px 14px 18px;
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
   z-index: 100;
-}
-
-:root[data-theme='light'] .sidebar {
-  background: rgba(250, 246, 240, 0.9);
-}
-
-.sidebar-header,
-.nav-link,
-.logout-btn {
-  border-radius: 18px;
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
-  background: var(--bg-accent);
-  border: 1px solid var(--border-color);
+  padding: 2px 10px;
 }
 
 .brand-mark {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  overflow: hidden;
   display: grid;
   place-items: center;
+  box-shadow: var(--shadow-sm);
 }
 
 .brand-mark img {
@@ -227,7 +199,9 @@ defineExpose({ mobileOpen })
 }
 
 .brand-title {
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
 }
 
@@ -235,17 +209,15 @@ defineExpose({ mobileOpen })
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--text-muted);
-  opacity: 0.7;
-  letter-spacing: 0.5px;
 }
 
 /* Mobile user info */
 .mobile-user-info {
   display: none;
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-color);
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-sm);
 }
 
 .mobile-user-name {
@@ -263,10 +235,12 @@ defineExpose({ mobileOpen })
 .nav-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 6px;
+  gap: 2px;
   overflow-y: auto;
   flex: 1;
+  margin-inline: -4px;
+  padding-inline: 4px;
+  scrollbar-width: none;
 }
 
 .nav-link,
@@ -274,82 +248,121 @@ defineExpose({ mobileOpen })
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid transparent;
+  padding: 6px 14px 6px 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
   color: var(--text-secondary);
   background: transparent;
   text-decoration: none;
+  font-weight: 600;
   cursor: pointer;
+  transition: background-color var(--transition), color var(--transition), box-shadow var(--transition);
 }
 
 .nav-link:hover,
 .logout-btn:hover {
   background: var(--bg-secondary);
   color: var(--text-primary);
-  border-color: var(--border-color);
-  transform: none;
 }
 
 .nav-link.active {
-  background: linear-gradient(135deg, rgba(111, 228, 201, 0.2), rgba(117, 184, 255, 0.18));
-  border-color: rgba(111, 228, 201, 0.25);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Icon sits in a soft round tile; the active page tints it with the accent. */
+.nav-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.nav-link:hover .nav-icon,
+.logout-btn:hover .nav-icon {
   color: var(--text-primary);
 }
 
-.nav-icon {
-  width: 20px;
-  text-align: center;
-  font-size: 1rem;
+.nav-link.active .nav-icon {
+  background: var(--accent-dim);
+  color: var(--accent);
+  --icon-tint: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.stale-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+  margin-left: auto;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--warning) 60%, transparent);
+  animation: stale-pulse 2.4s infinite;
   flex-shrink: 0;
+}
+
+@keyframes stale-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
 }
 
 .nav-label {
   font-size: 0.92rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.3;
 }
 
 .sidebar-bottom {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
 }
 
 .theme-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
-  border-radius: 18px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-elevated);
+  padding: 6px 8px 6px 14px;
+  border-radius: var(--radius-pill);
 }
 
 .theme-label {
-  font-size: 0.85rem;
+  font-size: 0.88rem;
 }
 
 .install-btn {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 12px;
   width: 100%;
-  padding: 12px 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(111, 228, 201, 0.3);
-  background: linear-gradient(135deg, rgba(111, 228, 201, 0.12), rgba(117, 184, 255, 0.1));
+  padding: 6px 14px 6px 6px;
+  border-radius: var(--radius-pill);
+  border: 0;
+  background: var(--bg-soft);
   color: var(--text-primary);
+  font-weight: 600;
   cursor: pointer;
 }
 
+.install-btn .nav-icon {
+  color: var(--accent);
+}
+
 .install-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(111, 228, 201, 0.25), rgba(117, 184, 255, 0.2));
-  border-color: rgba(111, 228, 201, 0.45);
+  background: var(--accent-dim);
 }
 
 .install-btn:disabled {
-  opacity: 0.6;
+  background: transparent;
+  opacity: 0.7;
   cursor: default;
 }
 
@@ -363,7 +376,7 @@ defineExpose({ mobileOpen })
 
 .logout-btn {
   width: 100%;
-  border: 1px solid var(--border-color);
+  justify-content: flex-start;
 }
 
 /* Theme toggle */
@@ -450,62 +463,41 @@ defineExpose({ mobileOpen })
 .hamburger {
   display: none;
   position: fixed;
-  top: 16px;
-  left: 14px;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 14px);
   z-index: 200;
-  width: 40px;
-  height: 40px;
-  padding: 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
   background: var(--bg-secondary);
-  backdrop-filter: blur(18px);
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 5px;
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  place-items: center;
   cursor: pointer;
 }
 
 .hamburger.open {
   left: auto;
-  right: 14px;
-}
-
-.hamburger span {
-  display: block;
-  width: 20px;
-  height: 2px;
-  background: var(--text-primary);
-  border-radius: 2px;
-}
-
-.hamburger.open span:nth-child(1) {
-  transform: rotate(45deg) translate(5px, 5px);
-}
-
-.hamburger.open span:nth-child(2) {
-  opacity: 0;
-}
-
-.hamburger.open span:nth-child(3) {
-  transform: rotate(-45deg) translate(5px, -5px);
+  right: calc(env(safe-area-inset-right, 0px) + 14px);
 }
 
 .sidebar-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(4, 8, 16, 0.55);
   z-index: 90;
   opacity: 0;
   pointer-events: none;
+  transition: opacity 0.2s ease;
 }
 
 @media (max-width: 1024px) {
   .sidebar {
-    width: 72px;
-    min-width: 72px;
-    padding: 14px 8px;
+    width: 78px;
+    min-width: 78px;
+    padding: 18px 10px;
   }
 
   .brand-copy,
@@ -515,29 +507,35 @@ defineExpose({ mobileOpen })
 
   .theme-row {
     justify-content: center;
-    padding: 8px;
+    padding: 6px 0;
   }
 
   .sidebar-header,
   .nav-link,
-  .logout-btn {
+  .logout-btn,
+  .install-btn {
     justify-content: center;
-    padding-inline: 10px;
+    padding: 6px;
   }
 }
 
 @media (max-width: 768px) {
   .hamburger {
-    display: flex;
+    display: grid;
   }
 
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     transform: translateX(-100%);
-    width: 280px;
+    transition: transform 0.25s ease;
+    width: 288px;
     min-width: 0;
     height: 100vh;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 22px);
+    padding-left: calc(env(safe-area-inset-left, 0px) + 14px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+    box-shadow: var(--shadow-lg);
   }
 
   .sidebar--open {
@@ -554,20 +552,31 @@ defineExpose({ mobileOpen })
     display: block;
   }
 
+  /* Account, theme, settings, sync and sign-out live in the profile menu
+     on phones; the drawer keeps navigation and Install App. */
+  .desk-only {
+    display: none !important;
+  }
+
   .mobile-user-info {
-    display: block;
+    display: none;
   }
 
   .theme-row {
     justify-content: space-between;
-    padding: 8px 14px;
+    padding: 6px 8px 6px 14px;
   }
 
-  .sidebar-header,
-  .nav-link,
-  .logout-btn {
+  .sidebar-header {
     justify-content: flex-start;
-    padding-inline: 14px;
+    padding: 2px 10px;
+  }
+
+  .nav-link,
+  .logout-btn,
+  .install-btn {
+    justify-content: flex-start;
+    padding: 6px 14px 6px 6px;
   }
 }
 

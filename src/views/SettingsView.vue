@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTransactionsStore } from '../stores/transactions'
@@ -7,6 +7,7 @@ import { useAccountsStore } from '../stores/accounts'
 import { useCreditCardsStore } from '../stores/creditCards'
 import { useAssetsStore } from '../stores/assets'
 import { useCategoriesStore } from '../stores/categories'
+import { useCurrenciesStore } from '../stores/currencies'
 import { useLabelsStore } from '../stores/labels'
 import AppShell from '../components/layout/AppShell.vue'
 import { useBiometricLock } from '../composables/useBiometricLock'
@@ -33,12 +34,25 @@ const accountsStore = useAccountsStore()
 const creditCardsStore = useCreditCardsStore()
 const assetsStore = useAssetsStore()
 const categoriesStore = useCategoriesStore()
+const currenciesStore = useCurrenciesStore()
 const labelsStore = useLabelsStore()
 
 const defaultCurrency = ref(localStorage.getItem('defaultCurrency') || 'INR')
 
-function saveDefaultCurrency() {
+onMounted(async () => {
+  await currenciesStore.fetchCurrencies()
+  if (currenciesStore.defaultCurrency?.code) {
+    defaultCurrency.value = currenciesStore.defaultCurrency.code
+  }
+})
+
+watch(() => currenciesStore.defaultCurrency?.code, (code) => {
+  if (code) defaultCurrency.value = code
+})
+
+async function saveDefaultCurrency() {
   localStorage.setItem('defaultCurrency', defaultCurrency.value)
+  await currenciesStore.setDefault(defaultCurrency.value)
 }
 
 async function handleLogout() {
@@ -50,8 +64,8 @@ function exportCSV() {
   const transactions = transactionsStore.transactions
   if (!transactions.length) return alert('No transactions to export')
 
-  const headers = ['Date', 'Type', 'Description', 'Amount', 'Currency', 'Amount INR']
-  const rows = transactions.map(tx => [tx.date, tx.type, tx.description, tx.amount, tx.currency, tx.amount_inr])
+  const headers = ['Date', 'Type', 'Description', 'Amount', 'Currency', 'Amount (Default)', 'Default Currency']
+  const rows = transactions.map(tx => [tx.date, tx.type, tx.description, tx.amount, tx.currency, tx.amount_default ?? tx.amount_inr ?? '', tx.default_currency || ''])
   const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
 
   const blob = new Blob([csv], { type: 'text/csv' })
@@ -95,67 +109,99 @@ async function exportJSON() {
 <template>
   <AppShell>
     <div class="settings-page fade-in">
-      <div class="card settings-card" v-if="auth.user">
-        <div class="card-header">
-          <h3>Account</h3>
-        </div>
-        <div class="info-grid">
-          <div class="info-item">
-            <span class="info-label">Name</span>
-            <span class="info-value">{{ auth.user.user_metadata?.full_name || 'Not set' }}</span>
+      <section v-if="auth.user" class="settings-group">
+        <h2 class="group-title">Account</h2>
+        <div class="card group-card">
+          <div class="profile-row">
+            <span class="profile-avatar" aria-hidden="true">
+              {{ (auth.user.user_metadata?.full_name || auth.user.email || '?').charAt(0).toUpperCase() }}
+            </span>
+            <div class="profile-copy">
+              <span class="profile-name" :class="{ 'is-unset': !auth.user.user_metadata?.full_name }">
+                {{ auth.user.user_metadata?.full_name || 'Name not set' }}
+              </span>
+              <span class="profile-email">{{ auth.user.email }}</span>
+            </div>
           </div>
-          <div class="info-item">
-            <span class="info-label">Email</span>
-            <span class="info-value">{{ auth.user.email }}</span>
-          </div>
         </div>
-      </div>
+      </section>
 
-      <div class="card settings-card">
-        <div class="card-header">
-          <h3>Preferences</h3>
-        </div>
-        <div class="preference-grid">
-          <div class="preference-item">
-            <span class="preference-label">Default Currency</span>
-            <select v-model="defaultCurrency" @change="saveDefaultCurrency">
-              <option value="INR">INR (₹)</option>
-              <option value="USD">USD ($)</option>
+      <section class="settings-group">
+        <h2 class="group-title">Preferences</h2>
+        <div class="card group-card">
+          <div class="row row--stack">
+            <div class="row-copy">
+              <span class="row-label">Default currency</span>
+              <span class="row-hint">Totals and conversions across the app use this currency.</span>
+            </div>
+            <select v-model="defaultCurrency" class="row-select" aria-label="Default currency" @change="saveDefaultCurrency">
+              <option v-for="c in currenciesStore.currencies" :key="c.code" :value="c.code">
+                {{ c.code }} ({{ c.symbol }})
+              </option>
             </select>
           </div>
-          <div class="preference-item" v-if="biometricSupported">
-            <div>
-              <span class="preference-label">App Lock</span>
-              <span class="preference-hint">Use fingerprint or face to unlock</span>
+          <div class="row">
+            <div class="row-copy">
+              <span class="row-label">Manage currencies</span>
+              <span class="row-hint">Add or remove currencies from the Currency page.</span>
+            </div>
+            <router-link to="/converter" class="link-btn">
+              Open converter
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+            </router-link>
+          </div>
+          <div class="row" v-if="biometricSupported">
+            <div class="row-copy">
+              <span class="row-label">App lock</span>
+              <span class="row-hint">Use fingerprint or face to unlock.</span>
             </div>
             <button
               class="toggle-btn"
               :class="{ active: biometricEnabled }"
               :disabled="biometricLoading"
+              role="switch"
+              :aria-checked="biometricEnabled ? 'true' : 'false'"
+              aria-label="App lock"
               @click="toggleBiometric"
             >
               <span class="toggle-knob" />
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="card settings-card">
-        <div class="card-header">
-          <h3>Export</h3>
+      <section class="settings-group">
+        <h2 class="group-title">Export</h2>
+        <div class="card group-card">
+          <div class="row row--stack">
+            <div class="row-copy">
+              <span class="row-label">Transactions as CSV</span>
+              <span class="row-hint">A spreadsheet of your loaded transactions.</span>
+            </div>
+            <button class="row-btn" @click="exportCSV">Export CSV</button>
+          </div>
+          <div class="row row--stack">
+            <div class="row-copy">
+              <span class="row-label">Full backup as JSON</span>
+              <span class="row-hint">Accounts, cards, assets, categories, labels and transactions.</span>
+            </div>
+            <button class="row-btn" @click="exportJSON">Export JSON</button>
+          </div>
         </div>
-        <div class="export-buttons">
-          <button class="export-btn" @click="exportCSV">Export CSV</button>
-          <button class="export-btn" @click="exportJSON">Export JSON</button>
-        </div>
-      </div>
+      </section>
 
-      <div class="card settings-card danger-card">
-        <div class="card-header">
-          <h3>Sign Out</h3>
+      <section class="settings-group">
+        <h2 class="group-title">Session</h2>
+        <div class="card group-card danger-card">
+          <div class="row row--stack">
+            <div class="row-copy">
+              <span class="row-label danger-label">Sign out</span>
+              <span class="row-hint">End your session on this device.</span>
+            </div>
+            <button class="btn-danger row-btn" @click="handleLogout">Sign out</button>
+          </div>
         </div>
-        <button class="btn-danger signout-btn" @click="handleLogout">Sign Out</button>
-      </div>
+      </section>
     </div>
   </AppShell>
 </template>
@@ -164,107 +210,190 @@ async function exportJSON() {
 .settings-page {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  max-width: 860px;
+  gap: 24px;
+  max-width: 760px;
+  min-width: 0;
 }
 
-.settings-card {
-  padding: 20px;
-}
-
-.card-header {
-  margin-bottom: 14px;
-}
-
-.card-header h3 {
-  font-size: 1.05rem;
-  font-weight: 800;
-}
-
-.info-grid,
-.preference-grid {
-  display: grid;
-  gap: 14px;
-}
-
-.preference-item,
-.info-item {
+.settings-group {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 14px;
-  border-radius: 16px;
-  background: var(--bg-elevated);
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
 
-.info-label,
-.preference-label {
-  font-size: 0.8rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.group-title {
+  font-size: 0.85rem;
+  font-weight: 600;
   color: var(--text-muted);
-}
-
-.info-value {
-  color: var(--text-secondary);
-}
-
-.export-buttons {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.export-btn {
-  min-width: 160px;
-}
-
-.signout-btn {
-  width: fit-content;
-}
-
-.preference-hint {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-top: 2px;
-  font-weight: 500;
-  text-transform: none;
+  padding: 0 8px;
   letter-spacing: 0;
 }
 
-.toggle-btn {
-  position: relative;
-  width: 48px;
-  height: 28px;
-  border-radius: 14px;
-  border: none;
-  background: var(--bg-surface);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.2s;
+.group-card {
+  overflow: hidden;
+  border-radius: var(--radius);
 }
 
-.toggle-btn.active {
+/* Rows: label + description on the left, control on the right. */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 16px 20px;
+  min-width: 0;
+}
+
+.row + .row,
+.profile-row + .row {
+  border-top: 1px solid var(--border-color);
+}
+
+.row-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.row-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.row-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.row-select {
+  width: auto;
+  min-width: 170px;
+  max-width: 100%;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-weight: 600;
+}
+
+.row-btn {
+  padding: 9px 18px;
+  font-size: 0.86rem;
+  flex-shrink: 0;
+}
+
+/* Account */
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  min-width: 0;
+}
+
+.profile-avatar {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.profile-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.profile-name {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.profile-name.is-unset {
+  color: var(--text-muted);
+}
+
+.profile-email {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Link to the converter page, styled as a soft accent pill. */
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px 9px 18px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.86rem;
+  white-space: nowrap;
+  transition: background-color var(--transition);
+}
+
+.link-btn:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+/* Toggle switch */
+.toggle-btn {
+  position: relative;
+  width: 50px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--border-light);
+  flex-shrink: 0;
+}
+
+.toggle-btn:hover {
+  background: var(--border-light);
+}
+
+.toggle-btn.active,
+.toggle-btn.active:hover {
   background: var(--accent);
+}
+
+.toggle-btn:active:not(:disabled) {
+  transform: none;
 }
 
 .toggle-knob {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--text-primary);
-  transition: transform 0.2s;
+  box-shadow: 0 2px 6px rgba(2, 6, 16, 0.25);
+  transition: transform var(--transition), background-color var(--transition);
 }
 
 .toggle-btn.active .toggle-knob {
   transform: translateX(20px);
-  background: #0d1117;
+  background: var(--accent-ink);
 }
 
 .toggle-btn:disabled {
@@ -272,15 +401,44 @@ async function exportJSON() {
   cursor: not-allowed;
 }
 
-@media (max-width: 720px) {
-  .preference-item,
-  .info-item {
-    flex-direction: column;
-    align-items: flex-start;
+/* Session group: separated from the rest with a soft red tint. */
+.danger-card {
+  background: color-mix(in srgb, var(--expense) 5%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--expense) 20%, transparent);
+}
+
+.danger-label {
+  color: var(--expense);
+}
+
+@media (max-width: 560px) {
+  .row {
+    padding: 14px 16px;
   }
 
-  .preference-item select {
+  .profile-row {
+    padding: 16px;
+  }
+
+  /* Wide controls drop below their label and fill the row. */
+  .row--stack {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .row--stack .row-copy {
+    flex-basis: auto;
+  }
+
+  .row--stack .row-select,
+  .row--stack .row-btn {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle-knob {
+    transition: none;
   }
 }
 </style>

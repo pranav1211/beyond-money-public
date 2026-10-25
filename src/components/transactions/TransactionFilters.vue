@@ -17,9 +17,23 @@ const selectedMonth = ref(null)
 
 const years = computed(() => {
   const current = now.getFullYear()
-  const list = []
+  const list = [null]
   for (let y = current; y >= current - 5; y--) list.push(y)
   return list
+})
+
+const categoryTypes = new Set(['income', 'expense'])
+
+const filteredCategoryOptions = computed(() => {
+  const all = categoriesStore.categories
+  const selectedType = filters.value.type
+  if (selectedType && categoryTypes.has(selectedType)) {
+    return all.filter(c => c.type === selectedType)
+  }
+  if (selectedType === 'transfer' || selectedType === 'lend' || selectedType === 'lend_repayment') {
+    return []
+  }
+  return all
 })
 
 const months = [
@@ -45,15 +59,27 @@ const filters = ref({
 })
 
 function currentFilters() {
-  const clean = { year: String(selectedYear.value) }
-  if (selectedMonth.value) {
-    clean.month = `${selectedYear.value}-${selectedMonth.value}`
+  const clean = {}
+  if (selectedYear.value) {
+    clean.year = String(selectedYear.value)
+    if (selectedMonth.value) {
+      clean.month = `${selectedYear.value}-${selectedMonth.value}`
+    }
+  } else if (selectedMonth.value) {
+    clean.month_only = selectedMonth.value
   }
   Object.entries(filters.value).forEach(([key, value]) => {
     if (value) clean[key] = value
   })
   return clean
 }
+
+watch(() => filters.value.type, () => {
+  if (filters.value.category_id && !filteredCategoryOptions.value.some(c => c.id === filters.value.category_id)) {
+    filters.value.category_id = null
+  }
+  applyFilters()
+})
 
 function applyFilters() {
   emit('filter', currentFilters())
@@ -84,7 +110,7 @@ watch(() => route.query.account_id, (value) => {
     <div class="filter-item">
       <label class="filter-label">Year</label>
       <select v-model="selectedYear" class="filter-input" @change="applyFilters">
-        <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+        <option v-for="y in years" :key="y ?? 'all'" :value="y">{{ y ?? 'All Years' }}</option>
       </select>
     </div>
     <div class="filter-item">
@@ -102,19 +128,21 @@ watch(() => route.query.account_id, (value) => {
       </select>
     </div>
     <div class="filter-item">
-      <label class="filter-label">Category</label>
-      <select v-model="filters.category_id" class="filter-input" @change="applyFilters">
-        <option :value="null">All</option>
-        <option v-for="category in categoriesStore.categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-      </select>
-    </div>
-    <div class="filter-item">
       <label class="filter-label">Type</label>
       <select v-model="filters.type" class="filter-input" @change="applyFilters">
         <option :value="null">All</option>
         <option value="income">Income</option>
         <option value="expense">Expense</option>
         <option value="transfer">Transfer</option>
+        <option value="lend">Lend</option>
+        <option value="lend_repayment">Lend Repayment</option>
+      </select>
+    </div>
+    <div class="filter-item">
+      <label class="filter-label">Category</label>
+      <select v-model="filters.category_id" class="filter-input" @change="applyFilters">
+        <option :value="null">All</option>
+        <option v-for="category in filteredCategoryOptions" :key="category.id" :value="category.id">{{ category.name }}</option>
       </select>
     </div>
     <div class="filter-item">

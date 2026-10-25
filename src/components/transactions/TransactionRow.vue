@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import { formatDate } from '../../lib/dateFormat'
 import { useLabelsStore } from '../../stores/labels'
+import { useCurrenciesStore } from '../../stores/currencies'
+import { inDefault, defaultCurrencyCode, defaultCurrencySymbol } from '../../lib/money'
 
 const props = defineProps({
   transaction: { type: Object, required: true },
@@ -9,6 +11,7 @@ const props = defineProps({
 
 const emit = defineEmits(['delete', 'edit'])
 const labelsStore = useLabelsStore()
+const currenciesStore = useCurrenciesStore()
 
 const transactionLabels = computed(() => {
   const labelIds = props.transaction.transaction_labels?.map(tl => tl.label_id) || []
@@ -20,15 +23,30 @@ function accountName(transaction) {
 }
 
 function categoryName(transaction) {
-  return transaction.categories?.name || '-'
+  if (transaction.type === 'transfer') return 'Transfer'
+  if (transaction.type === 'lend') return 'Lent'
+  if (transaction.type === 'lend_repayment') return 'Repaid'
+  return transaction.categories?.name || 'Uncategorised'
+}
+
+const TYPE_LABELS = { income: 'Income', expense: 'Expense', transfer: 'Transfer', lend: 'Lent', lend_repayment: 'Repaid' }
+function typeLabel(transaction) {
+  return TYPE_LABELS[transaction.type] || transaction.type
+}
+
+function amountSign(transaction) {
+  if (transaction.type === 'income' || transaction.type === 'lend_repayment') return '+'
+  if (transaction.type === 'transfer') return transaction.notes === 'transfer_in' ? '+' : '−'
+  return '−'
 }
 
 function displayAmount(transaction) {
-  const symbol = transaction.currency === 'USD' ? '$' : '₹'
+  const code = transaction.currency || defaultCurrencyCode()
+  const symbol = currenciesStore.symbolOf(code)
   const formatted = Number(transaction.amount || 0).toLocaleString('en-IN')
-  if (transaction.currency === 'USD') {
-    const inrFormatted = Number(transaction.amount_inr || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })
-    return `${symbol}${formatted} (₹${inrFormatted})`
+  if (code !== defaultCurrencyCode()) {
+    const conv = Number(inDefault(transaction) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })
+    return `${symbol}${formatted} (${defaultCurrencySymbol()}${conv})`
   }
   return `${symbol}${formatted}`
 }
@@ -38,21 +56,31 @@ function displayAmount(transaction) {
   <tr class="tx-row">
     <td class="td-date">{{ formatDate(transaction.date) }}</td>
     <td class="td-amount">
-      <span :class="transaction.type">{{ displayAmount(transaction) }}</span>
+      <span class="num" :class="transaction.type">{{ amountSign(transaction) }}{{ displayAmount(transaction) }}</span>
     </td>
-    <td class="td-desc">{{ transaction.description }}</td>
-    <td>
-      <span class="type-badge" :class="transaction.type">{{ transaction.type }}</span>
+    <td class="td-desc">
+      {{ transaction.description || categoryName(transaction) }}
+      <span v-if="transaction.borrower_name" class="borrower-pill">{{ transaction.borrower_name }}</span>
     </td>
-    <td>{{ categoryName(transaction) }}</td>
-    <td>
+    <td class="td-type">
+      <span class="type-badge" :class="transaction.type">{{ typeLabel(transaction) }}</span>
+    </td>
+    <td class="td-cat">
+      <span class="cat-dot" :style="{ background: transaction.categories?.color || 'var(--text-muted)' }" aria-hidden="true"></span>{{ categoryName(transaction) }}
+    </td>
+    <td class="td-labels" :class="{ 'is-empty': !transactionLabels.length }">
       <div v-if="transactionLabels.length" class="label-list">
-        <span v-for="label in transactionLabels" :key="label.id" class="label-tag" :style="{ '--label-color': label.color }">{{ label.name }}</span>
+        <span
+          v-for="label in transactionLabels"
+          :key="label.id"
+          class="label-tag"
+          :style="{ '--label-color': label.color }"
+        >{{ label.name }}</span>
       </div>
       <span v-else class="text-muted">-</span>
     </td>
-    <td>{{ accountName(transaction) }}</td>
-    <td>
+    <td class="td-account">{{ accountName(transaction) }}</td>
+    <td class="td-actions">
       <div class="action-btns">
         <button class="btn-edit" @click="emit('edit', transaction)">Edit</button>
         <button class="btn-delete" @click="emit('delete', transaction.id)">Delete</button>
@@ -62,8 +90,12 @@ function displayAmount(transaction) {
 </template>
 
 <style scoped>
+.tx-row {
+  transition: background-color var(--transition);
+}
+
 .tx-row:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-elevated);
 }
 
 .td-date {
@@ -75,45 +107,71 @@ function displayAmount(transaction) {
 .td-desc {
   white-space: normal;
   word-break: break-word;
+  font-weight: 600;
 }
 
 .td-amount {
   text-align: right;
-  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.type-badge {
+.td-amount .num {
+  font-weight: 600;
+}
+
+.td-cat {
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.cat-dot {
   display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.73rem;
-  font-weight: 800;
-  text-transform: uppercase;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: 1px;
 }
 
-.type-badge.income,
-span.income {
-  color: var(--income);
-  background: rgba(120, 224, 143, 0.12);
+.td-account {
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
-.type-badge.expense,
-span.expense {
-  color: var(--expense);
-  background: rgba(255, 125, 125, 0.12);
-}
-
-.type-badge.transfer,
-span.transfer {
-  color: var(--info);
-  background: rgba(117, 184, 255, 0.12);
-}
-
+/* Amounts: income and repayments in green, transfers in blue; everyday
+   spending stays in the normal text colour rather than alarm red. */
 span.income,
-span.expense,
-span.transfer {
-  background: transparent;
+span.lend_repayment { color: var(--income); }
+span.transfer { color: var(--info); }
+
+.type-badge {
+  --tone: var(--text-muted);
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  white-space: nowrap;
+}
+
+.type-badge.income { --tone: var(--income); }
+.type-badge.expense { --tone: var(--text-secondary); }
+.type-badge.transfer { --tone: var(--info); }
+.type-badge.lend { --tone: var(--warning); }
+.type-badge.lend_repayment { --tone: var(--income); }
+
+.borrower-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  white-space: nowrap;
 }
 
 .label-list {
@@ -124,39 +182,36 @@ span.transfer {
 
 .label-tag {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 8px;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
   font-size: 0.7rem;
   font-weight: 700;
-  background: color-mix(in srgb, var(--label-color) 18%, transparent);
-  color: var(--label-color);
-  border: 1px solid color-mix(in srgb, var(--label-color) 30%, transparent);
+  background: var(--label-color);
+  color: #11151b;
   white-space: nowrap;
 }
 
 .action-btns {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .btn-edit,
 .btn-delete {
   padding: 6px 12px;
-  border-radius: 10px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .btn-edit:hover {
   color: var(--accent);
-  border-color: var(--accent-dim);
   background: var(--accent-dim);
 }
 
 .btn-delete:hover {
   color: var(--expense);
-  border-color: rgba(255, 125, 125, 0.3);
-  background: rgba(255, 125, 125, 0.08);
+  background: color-mix(in srgb, var(--expense) 12%, transparent);
 }
 </style>

@@ -1,6 +1,6 @@
 const DB_NAME = 'beyond-money'
-const DB_VERSION = 3
-const STORES = ['accounts', 'transactions', 'creditCards', 'assets', 'subscriptions', 'categories', 'labels', 'ccExpenses']
+const DB_VERSION = 5
+const STORES = ['accounts', 'transactions', 'creditCards', 'assets', 'subscriptions', 'categories', 'labels', 'ccExpenses', 'currencies', 'netWorthSnapshots']
 
 let dbPromise = null
 
@@ -89,15 +89,25 @@ export async function idbClearAll() {
 export async function syncQueueAdd(operation) {
   try {
     const db = await openDB()
-    return new Promise((resolve, reject) => {
+    // CRITICAL: deep-clone to strip Vue reactive proxies (and any other
+    // non-structured-cloneable values) before handing the object to
+    // IndexedDB. Callers pass payloads/labels straight from reactive store
+    // state — `store.add()` on a Proxy throws DataCloneError, which previously
+    // rejected this promise, made enqueue() throw, and silently dropped the
+    // write (it never reached the queue → looked "lost"). cloneForIDB mirrors
+    // what idbSet already does for cached rows.
+    const item = { ...cloneForIDB(operation), created_at: Date.now(), retries: 0 }
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction('syncQueue', 'readwrite')
       const store = tx.objectStore('syncQueue')
-      const item = { ...operation, created_at: Date.now(), retries: 0 }
       const req = store.add(item)
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
-  } catch {
+  } catch (err) {
+    // `return await` above keeps the rejection inside this try so we never
+    // throw out of here — a queue failure must not break the caller's flow.
+    console.error('[idb] syncQueueAdd failed:', err)
     return null
   }
 }

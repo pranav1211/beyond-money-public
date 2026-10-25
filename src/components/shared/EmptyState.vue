@@ -29,22 +29,32 @@ defineProps({
 }
 
 .empty-icon {
-  color: var(--text-muted);
-  opacity: 0.4;
-  margin-bottom: 16px;
+  width: 76px;
+  height: 76px;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.empty-icon svg {
+  width: 32px;
+  height: 32px;
 }
 
 .empty-title {
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   margin-bottom: 6px;
 }
 
 .empty-message {
-  font-size: 0.85rem;
+  font-size: 0.88rem;
   color: var(--text-muted);
   max-width: 320px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 </style>

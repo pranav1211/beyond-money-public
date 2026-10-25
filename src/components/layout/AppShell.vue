@@ -23,14 +23,14 @@ import TopBar from './TopBar.vue'
   min-height: 100vh;
   background: transparent;
   max-width: 100vw;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .app-main {
   min-height: 100vh;
   flex: 1;
   min-width: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .app-content {
@@ -41,6 +41,7 @@ import TopBar from './TopBar.vue'
 .content-inner {
   width: min(100%, var(--page-max));
   margin: 0 auto;
+  min-width: 0;
 }
 
 @media (max-width: 768px) {

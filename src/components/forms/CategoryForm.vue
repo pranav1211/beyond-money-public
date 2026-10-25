@@ -65,112 +65,108 @@ function handleSubmit() {
 .category-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .form-label {
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin: 0;
 }
 
 .form-input {
-  padding: 10px 14px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  transition: border-color var(--transition), box-shadow var(--transition);
+  min-height: 48px;
 }
 
-.form-input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-dim);
-}
-
+/* Colour field: one inset tile holding the picker, the hex value and a dot. */
 .color-picker-row {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-height: 48px;
+  padding: 6px 14px 6px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
 }
 
 .color-input {
-  width: 48px;
-  height: 40px;
-  padding: 4px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-primary);
+  width: 44px;
+  min-width: 44px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
   cursor: pointer;
-  transition: border-color var(--transition);
 }
 
-.color-input:hover {
-  border-color: var(--border-light);
+.color-input:focus {
+  background: transparent;
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 10px;
+}
+
+.color-input::-moz-color-swatch {
+  border: none;
+  border-radius: 10px;
 }
 
 .color-value {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
   font-size: 0.85rem;
-  color: var(--text-muted);
-  font-family: monospace;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
 }
 
 .color-preview {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  border: 2px solid var(--border-color);
   flex-shrink: 0;
 }
 
+/* Primary action sits on the right; DOM order is unchanged. */
 .form-actions {
   display: flex;
-  gap: 12px;
-  padding-top: 8px;
-}
-
-.form-actions .btn-primary {
-  padding: 10px 24px;
-  background: var(--accent);
-  color: #0d1117;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.form-actions .btn-primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  transform: translateY(-1px);
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  gap: 10px;
+  padding-top: 6px;
 }
 
 .form-actions .btn-cancel {
-  padding: 10px 24px;
-  background: var(--bg-surface);
+  background: transparent;
   color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all var(--transition);
 }
 
 .form-actions .btn-cancel:hover {
   background: var(--bg-elevated);
-  border-color: var(--border-light);
   color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  .form-actions button {
+    flex: 1;
+  }
 }
 </style>

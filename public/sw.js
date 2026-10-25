@@ -1,5 +1,5 @@
 // Beyond Money Service Worker
-const DISPLAY_VERSION = "1.6";
+const DISPLAY_VERSION = "3.0.1";
 const BUILD_ID = "__BUILD_TIMESTAMP__";
 const CACHE_NAME = `bm-cache-${DISPLAY_VERSION}-${BUILD_ID}`;
 
@@ -17,9 +17,20 @@ const PRECACHE_ASSETS = [
   "/icon-256x256.png",
   "/icon-384x384.png",
   "/icon-512x512.png",
-  "https://content.beyondmebtw.com/assets/bmb_logos/bmbmoney.png",
-  "https://content.beyondmebtw.com/assets/bmb_logos/bmbmoney.ico"
+  "/logo.png",
+  "/favicon.ico"
 ];
+
+// Every hashed app chunk (JS/CSS) for ALL routes — injected at build time by
+// the sw-build-id plugin in vite.config.js. The app is code-split, so each
+// route lives in its own chunk; without pre-caching the full set here, the SW
+// would only cache a route's chunk the first time it's opened ONLINE, and
+// navigating to an unopened page while offline would fail. Pre-caching the
+// whole list on install guarantees every page works offline from the start.
+// Falls back to [] in dev (placeholder not replaced) — wrapped in try/catch so
+// an unreplaced token never throws and kills SW registration.
+let BUILD_CHUNKS = [];
+try { BUILD_CHUNKS = JSON.parse('__PRECACHE_CHUNKS__'); } catch (e) { BUILD_CHUNKS = []; }
 
 // Install - pre-cache essential assets
 self.addEventListener("install", (event) => {
@@ -51,6 +62,21 @@ self.addEventListener("install", (event) => {
             console.warn(`[SW] Failed to cache ${asset}:`, err);
           }
         }
+
+        // Pre-cache every app chunk so ALL routes work offline immediately,
+        // not just the ones the user has opened. Done in parallel; individual
+        // failures are non-fatal (the on-demand fetch handler still backs them).
+        await Promise.all(
+          BUILD_CHUNKS.map(async (url) => {
+            try {
+              const res = await fetch(url, { cache: "reload" });
+              if (res.ok) await cache.put(url, res.clone());
+            } catch (err) {
+              console.warn(`[SW] Failed to pre-cache chunk ${url}:`, err);
+            }
+          })
+        );
+        console.log(`[SW] Pre-cached ${BUILD_CHUNKS.length} app chunks`);
 
         self.skipWaiting();
       } catch (err) {
@@ -109,6 +135,11 @@ async function cacheAppShellAndChunks() {
         chunkUrls.add(match[1]);
       }
     }
+
+    // Plus every build chunk (lazy route chunks aren't referenced in the HTML
+    // shell, so the scan above misses them) — this is what makes the sync
+    // page's "Download for Offline" button cache the entire app.
+    for (const url of BUILD_CHUNKS) chunkUrls.add(url);
 
     for (const url of chunkUrls) {
       try {
@@ -209,7 +240,7 @@ self.addEventListener("fetch", (event) => {
           return networkResponse;
         } catch (err) {
           return new Response(
-            "<html><body style='font-family:sans-serif;text-align:center;padding:60px 20px;background:#09111f;color:#f5f7fb'><h1>Offline</h1><p>Please connect to the internet and try again.</p></body></html>",
+            "<html><body style='font-family:sans-serif;text-align:center;padding:60px 20px;background:#0a1220;color:#f2f5fa'><h1>Offline</h1><p>Please connect to the internet and try again.</p></body></html>",
             { status: 503, headers: { "Content-Type": "text/html" } }
           );
         }
@@ -280,7 +311,7 @@ self.addEventListener("message", (event) => {
   const data = event.data;
 
   if (data === "getVersion" || data?.type === "GET_VERSION") {
-    event.source.postMessage({ type: "VERSION", version: DISPLAY_VERSION });
+    event.source.postMessage({ type: "VERSION", version: DISPLAY_VERSION, buildId: BUILD_ID });
   }
 
   if (data === "skipWaiting" || data?.type === "SKIP_WAITING") {

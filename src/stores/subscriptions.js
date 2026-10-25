@@ -15,6 +15,7 @@ function normalizeSubscription(payload) {
     next_payment_date: payload.next_payment_date || null,
     notes: payload.notes?.trim() || null,
     is_active: payload.is_active ?? true,
+    is_paid: payload.is_paid ?? false,
   }
 }
 

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { localISODate } from '../lib/dateFormat'
 import { ref, computed } from 'vue'
 import { supabase } from '../lib/supabase'
 import { idbGet, idbSet } from '../lib/idb'
@@ -40,7 +41,7 @@ export const useCcExpensesStore = defineStore('ccExpenses', () => {
     loading.value = !loaded.value
     const { data, error: err } = await supabase
       .from('cc_expenses')
-      .select('*')
+      .select('*, cc_expense_labels(label_id)')
       .order('date', { ascending: false })
       .order('created_at', { ascending: false })
 
@@ -56,49 +57,86 @@ export const useCcExpensesStore = defineStore('ccExpenses', () => {
   }
 
   async function addExpense(payload) {
+    const { labels = [], ...rest } = payload
     const normalized = {
-      credit_card_id: payload.credit_card_id,
-      user_id: payload.user_id,
-      amount: Number(payload.amount || 0),
-      description: (payload.description || '').trim(),
-      date: payload.date || new Date().toISOString().split('T')[0],
+      credit_card_id: rest.credit_card_id,
+      user_id: rest.user_id,
+      amount: Number(rest.amount || 0),
+      description: (rest.description || '').trim(),
+      date: rest.date || localISODate(),
+      category_id: rest.category_id || null,
     }
 
     const { data, error: err } = await supabase.from('cc_expenses').insert(normalized).select().single()
     if (err) {
       const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-      const localEntry = { ...normalized, id: tempId, created_at: new Date().toISOString() }
+      const localEntry = { ...normalized, id: tempId, created_at: new Date().toISOString(), cc_expense_labels: labels.map(label_id => ({ label_id })) }
       expenses.value.unshift(localEntry)
       loaded.value = true
       idbSet('ccExpenses', expenses.value)
-      useSyncStore().enqueue({ table: 'cc_expenses', action: 'insert', payload: normalized })
+      useSyncStore().enqueue({ table: 'cc_expenses', action: 'insert', payload: normalized, _labels: labels })
       return localEntry
     }
 
-    expenses.value.unshift(data)
+    if (labels.length) {
+      const { error: labelsError } = await supabase.from('cc_expense_labels').insert(
+        labels.map(label_id => ({ cc_expense_id: data.id, label_id }))
+      )
+      if (labelsError) console.warn('cc_expense_labels insert failed', labelsError)
+    }
+
+    const enriched = { ...data, cc_expense_labels: labels.map(label_id => ({ label_id })) }
+    expenses.value.unshift(enriched)
     loaded.value = true
     idbSet('ccExpenses', expenses.value)
-    return data
+    return enriched
   }
 
   async function updateExpense(id, payload) {
+    const { labels, ...rest } = payload
     const normalized = {
-      amount: Number(payload.amount || 0),
-      description: (payload.description || '').trim(),
-      date: payload.date || new Date().toISOString().split('T')[0],
+      amount: Number(rest.amount || 0),
+      description: (rest.description || '').trim(),
+      date: rest.date || localISODate(),
+      category_id: rest.category_id ?? null,
     }
     const index = expenses.value.findIndex(e => e.id === id)
-    if (index !== -1) expenses.value[index] = { ...expenses.value[index], ...normalized }
+    const labelsProvided = Array.isArray(labels)
+    if (index !== -1) {
+      expenses.value[index] = {
+        ...expenses.value[index],
+        ...normalized,
+        ...(labelsProvided ? { cc_expense_labels: labels.map(label_id => ({ label_id })) } : {}),
+      }
+    }
     idbSet('ccExpenses', expenses.value)
 
     const { data, error: err } = await supabase.from('cc_expenses').update(normalized).eq('id', id).select().single()
     if (err) {
-      useSyncStore().enqueue({ table: 'cc_expenses', action: 'update', recordId: id, payload: normalized })
+      useSyncStore().enqueue({ table: 'cc_expenses', action: 'update', recordId: id, payload: normalized, _labels: labelsProvided ? labels : undefined })
       return expenses.value[index]
     }
-    if (index !== -1) expenses.value[index] = data
+
+    if (labelsProvided) {
+      await supabase.from('cc_expense_labels').delete().eq('cc_expense_id', id)
+      if (labels.length) {
+        const { error: labelsError } = await supabase.from('cc_expense_labels').insert(
+          labels.map(label_id => ({ cc_expense_id: id, label_id }))
+        )
+        if (labelsError) console.warn('cc_expense_labels insert failed', labelsError)
+      }
+    }
+
+    if (index !== -1) {
+      expenses.value[index] = {
+        ...data,
+        cc_expense_labels: labelsProvided
+          ? labels.map(label_id => ({ label_id }))
+          : (expenses.value[index].cc_expense_labels || []),
+      }
+    }
     idbSet('ccExpenses', expenses.value)
-    return data
+    return expenses.value[index]
   }
 
   async function deleteExpense(id) {
@@ -113,7 +151,7 @@ export const useCcExpensesStore = defineStore('ccExpenses', () => {
 
   async function archiveForCard(cardId) {
     const toArchive = expenses.value.filter(e => e.credit_card_id === cardId && !e.is_paid)
-    const paidDate = new Date().toISOString().split('T')[0]
+    const paidDate = localISODate()
 
     // Mark locally
     for (const e of toArchive) {

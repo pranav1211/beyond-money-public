@@ -3,9 +3,14 @@ import { ref } from 'vue'
 const CREDENTIAL_KEY = 'bm_biometric_credential'
 const ENABLED_KEY = 'bm_biometric_enabled'
 
-const isLocked = ref(false)
+// Resolve initial lock state synchronously from localStorage so the lock
+// screen paints on first frame instead of after auth init resolves.
+const _initialEnabled = localStorage.getItem(ENABLED_KEY) === 'true'
+const _hasCredential = !!localStorage.getItem(CREDENTIAL_KEY)
+
+const isLocked = ref(_initialEnabled && _hasCredential)
 const isSupported = ref(false)
-const isEnabled = ref(localStorage.getItem(ENABLED_KEY) === 'true')
+const isEnabled = ref(_initialEnabled)
 
 // Check WebAuthn + platform authenticator support
 async function checkSupport() {

@@ -1,56 +1,75 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
-
+/*
+ * Design language (3.0): Midnight type and palette, soft-vault shapes.
+ * - Sora for headings and money figures, Manrope for running text.
+ * - Solid, borderless surfaces in three tones (page → card → inset) that
+ *   separate by tone and a soft shadow. There is no glass blur: backdrop-filter
+ *   repaints on every scroll frame on phones.
+ * - Large radii and pill-shaped controls.
+ * - One accent (mint/teal), used for actions and the current page.
+ *   Income and expense keep their own green and red.
+ */
 :root {
-  --sidebar-width: 264px;
+  --sidebar-width: 256px;
   --topbar-height: 72px;
-  --radius: 20px;
-  --radius-sm: 14px;
-  --radius-lg: 28px;
-  --transition: 0s;
+  --radius: 24px;
+  --radius-sm: 16px;
+  --radius-lg: 30px;
+  --radius-pill: 999px;
+  --transition: 0.14s ease;
   --page-max: 1320px;
-  --bg-primary: #09111f;
-  --bg-secondary: rgba(13, 24, 42, 0.86);
-  --bg-elevated: #14233b;
-  --bg-surface: #1b2d48;
-  --bg-soft: rgba(79, 124, 255, 0.12);
-  --bg-accent: linear-gradient(135deg, rgba(38, 198, 218, 0.18), rgba(245, 166, 35, 0.18));
-  --border-color: rgba(138, 164, 196, 0.18);
-  --border-light: rgba(138, 164, 196, 0.32);
-  --text-primary: #f5f7fb;
-  --text-secondary: #c0cbdb;
-  --text-muted: #8c9ab0;
-  --accent: #6fe4c9;
-  --accent-hover: #87edd6;
-  --accent-dim: rgba(111, 228, 201, 0.18);
-  --income: #78e08f;
-  --expense: #ff7d7d;
+  --font-body: 'Manrope Variable', 'Manrope', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Sora Variable', 'Sora', 'Manrope Variable', 'Segoe UI', system-ui, sans-serif;
+
+  --bg-primary: #0a1220;
+  --bg-secondary: #111c2e;
+  --bg-elevated: #172438;
+  --bg-surface: #1d2c44;
+  --bg-soft: rgba(95, 224, 195, 0.10);
+  --bg-accent: linear-gradient(155deg, rgba(95, 224, 195, 0.14), rgba(95, 224, 195, 0) 62%);
+  --border-color: rgba(148, 170, 204, 0.10);
+  --border-light: rgba(148, 170, 204, 0.22);
+  --text-primary: #f2f5fa;
+  --text-secondary: #bcc7d8;
+  --text-muted: #8494ad;
+  --accent: #5fe0c3;
+  --accent-hover: #7ce8cf;
+  --accent-dim: rgba(95, 224, 195, 0.16);
+  --accent-ink: #06221c;
+  --income: #6fdc8c;
+  --expense: #ff7f86;
   --warning: #f5c86b;
-  --info: #75b8ff;
-  --shadow-sm: 0 12px 30px rgba(3, 8, 20, 0.18);
-  --shadow-lg: 0 20px 50px rgba(3, 8, 20, 0.3);
+  --info: #7cb6ff;
+  --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 10px 30px rgba(2, 6, 16, 0.32);
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 60px rgba(2, 6, 16, 0.5);
+  --shadow-accent: 0 10px 24px rgba(95, 224, 195, 0.22);
+  /* Older names some components still reference. */
+  --card-shadow: var(--shadow-sm);
+  --card-shadow-hover: var(--shadow-lg);
 }
 
 :root[data-theme='light'] {
-  --bg-primary: #f4f1ea;
-  --bg-secondary: rgba(255, 252, 247, 0.9);
-  --bg-elevated: #efe8db;
+  --bg-primary: #e9edf3;
+  --bg-secondary: #f9fafc;
+  --bg-elevated: #eef1f6;
   --bg-surface: #ffffff;
-  --bg-soft: rgba(0, 130, 119, 0.1);
-  --bg-accent: linear-gradient(135deg, rgba(255, 196, 132, 0.22), rgba(108, 199, 176, 0.18));
-  --border-color: rgba(115, 99, 77, 0.14);
-  --border-light: rgba(115, 99, 77, 0.26);
-  --text-primary: #2d241b;
-  --text-secondary: #5d4f41;
-  --text-muted: #8f7b69;
-  --accent: #008477;
-  --accent-hover: #029988;
-  --accent-dim: rgba(0, 132, 119, 0.12);
-  --income: #1f9d55;
-  --expense: #d04e4e;
-  --warning: #c78712;
-  --info: #2f7de1;
-  --shadow-sm: 0 10px 30px rgba(150, 122, 84, 0.12);
-  --shadow-lg: 0 20px 44px rgba(150, 122, 84, 0.18);
+  --bg-soft: rgba(0, 128, 110, 0.08);
+  --bg-accent: linear-gradient(155deg, rgba(0, 128, 110, 0.10), rgba(0, 128, 110, 0) 62%);
+  --border-color: rgba(30, 45, 70, 0.08);
+  --border-light: rgba(30, 45, 70, 0.16);
+  --text-primary: #0f1a2b;
+  --text-secondary: #3b4a60;
+  --text-muted: #66758c;
+  --accent: #00806e;
+  --accent-hover: #00927e;
+  --accent-dim: rgba(0, 128, 110, 0.12);
+  --accent-ink: #ffffff;
+  --income: #1a8f52;
+  --expense: #cf3f48;
+  --warning: #a86d12;
+  --info: #2f6fd6;
+  --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 10px 30px rgba(22, 34, 58, 0.07);
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 24px 50px rgba(22, 34, 58, 0.12);
+  --shadow-accent: 0 10px 22px rgba(0, 128, 110, 0.22);
 }
 
 *, *::before, *::after {
@@ -65,25 +84,47 @@ html {
   -moz-osx-font-smoothing: grayscale;
   background: var(--bg-primary);
   overscroll-behavior-y: contain;
-  overflow-x: hidden;
+  /* `clip` instead of `hidden` because `overflow-x: hidden` on html (or
+     body) silently disables touch / wheel scrolling on iOS Safari and
+     in some Chromium PWAs — the page only scrolls when you drag the
+     scrollbar itself. `clip` still prevents horizontal overflow but
+     doesn't create a scroll container, so the document keeps scrolling
+     normally. */
+  overflow-x: clip;
 }
 
 body {
   overscroll-behavior-y: contain;
-  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  overflow-x: clip;
+  font-family: var(--font-body);
+  /* Not background-attachment: fixed. On phones a fixed background repaints
+     the whole viewport on every scroll frame. */
   background:
-    radial-gradient(circle at top left, rgba(111, 228, 201, 0.16), transparent 28%),
-    radial-gradient(circle at top right, rgba(117, 184, 255, 0.12), transparent 24%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 30%),
+    radial-gradient(120% 50% at 0% 0%, var(--bg-soft), transparent 60%) no-repeat,
     var(--bg-primary);
+  background-size: 100% 900px, auto;
   color: var(--text-primary);
   line-height: 1.6;
   min-height: 100vh;
 }
 
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Money figures: Sora with tabular digits so columns line up and totals
+   don't change width as they update. */
+.num {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
 #app {
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100vw;
 }
 
@@ -100,58 +141,76 @@ button, .btn, input, select, textarea {
   font: inherit;
 }
 
+/* Taps respond immediately (no double-tap-to-zoom wait), and the grey tap
+   flash is replaced by each control's own pressed state. */
+a, button, .btn, input, select, textarea, label, [role='button'] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 button, .btn {
-  padding: 11px 18px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
+  padding: 11px 20px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
   color: var(--text-primary);
+  font-weight: 700;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  transition: background-color var(--transition), color var(--transition), border-color var(--transition), transform var(--transition), box-shadow var(--transition);
 }
 
 button:hover, .btn:hover {
-  border-color: var(--border-light);
-  background: var(--bg-elevated);
+  background: var(--bg-surface);
+}
+
+/* Press feedback: a small scale that tells the user the tap registered. */
+button:active:not(:disabled), .btn:active {
+  transform: scale(0.97);
+}
+
+button:focus-visible, .btn:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), #8ee7ea);
-  color: #0c1828;
+  background: var(--accent);
+  color: var(--accent-ink);
   border-color: transparent;
   font-weight: 800;
-  box-shadow: 0 12px 28px rgba(111, 228, 201, 0.22);
-}
-
-:root[data-theme='light'] .btn-primary {
-  color: #f8f5ef;
-  background: linear-gradient(135deg, var(--accent), #2aa28a);
+  box-shadow: var(--shadow-accent);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, var(--accent-hover), #9ef0f0);
+  background: var(--accent-hover);
 }
 
 .btn-danger {
   color: var(--expense);
-  border-color: rgba(208, 78, 78, 0.28);
+  background: color-mix(in srgb, var(--expense) 10%, transparent);
+}
+
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--expense) 18%, transparent);
 }
 
 input, select, textarea {
   width: 100%;
-  padding: 12px 14px;
+  padding: 12px 16px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-elevated);
   color: var(--text-primary);
+  transition: border-color var(--transition), box-shadow var(--transition), background-color var(--transition);
 }
 
 input::placeholder, textarea::placeholder {
@@ -162,7 +221,9 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 4px var(--accent-dim);
-  background: var(--bg-surface);
+  /* background-color, not the shorthand: the shorthand would wipe the
+     select's chevron background-image while focused. */
+  background-color: var(--bg-surface);
 }
 
 input[type='color'] {
@@ -189,8 +250,8 @@ textarea {
 
 label {
   display: block;
-  font-size: 0.86rem;
-  font-weight: 700;
+  font-size: 0.84rem;
+  font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 6px;
 }
@@ -202,7 +263,7 @@ table {
 }
 
 thead {
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
 }
 
 th, td {
@@ -212,9 +273,7 @@ th, td {
 
 th {
   font-size: 0.78rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-weight: 600;
   color: var(--text-muted);
   text-align: left;
 }
@@ -223,7 +282,6 @@ th {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  backdrop-filter: blur(18px);
   box-shadow: var(--shadow-sm);
 }
 
@@ -260,18 +318,20 @@ th {
 @media (max-width: 768px) {
   :root {
     --sidebar-width: 0px;
-    --topbar-height: 68px;
-    --radius-lg: 16px;
-    --radius: 12px;
-    --radius-sm: 10px;
-  }
-
-  body {
-    background-size: 170% auto;
+    --topbar-height: 64px;
+    --radius-lg: 24px;
+    --radius: 20px;
+    --radius-sm: 14px;
   }
 
   th, td {
     padding: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0s !important;
   }
 }
 

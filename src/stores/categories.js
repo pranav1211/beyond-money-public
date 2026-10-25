@@ -60,6 +60,19 @@ export const useCategoriesStore = defineStore('categories', () => {
     return data
   }
 
+  // Find a category by (name, type) case-insensitively, creating it if missing.
+  // Used by the automated investing flows so every buy/sell transaction lands on
+  // a real category instead of null. Returns the category row (with id).
+  async function ensureCategory({ name, type, color, icon }, userId) {
+    await fetchCategories()
+    const wanted = String(name).trim().toLowerCase()
+    const existing = categories.value.find(
+      c => c.type === type && String(c.name || '').trim().toLowerCase() === wanted
+    )
+    if (existing) return existing
+    return addCategory({ user_id: userId, name, type, color: color || '#6366f1', icon: icon || null })
+  }
+
   async function updateCategory(id, payload) {
     const normalized = {
       ...payload,
@@ -111,6 +124,11 @@ export const useCategoriesStore = defineStore('categories', () => {
       { user_id: userId, name: 'Shopping', type: 'expense', color: '#862e9c', icon: 'shopping' },
       { user_id: userId, name: 'Health', type: 'expense', color: '#0b7285', icon: 'health' },
       { user_id: userId, name: 'Miscellaneous', type: 'expense', color: '#6c757d', icon: 'misc' },
+      // Investing flows (buy/sell) depend on these — see INVESTING_CATEGORIES.
+      { user_id: userId, name: 'Investment', type: 'expense', color: '#5f3dc4', icon: 'investment' },
+      { user_id: userId, name: 'Capital Returned', type: 'income', color: '#1098ad', icon: 'investment' },
+      { user_id: userId, name: 'Realized Gain', type: 'income', color: '#2f9e44', icon: 'investment' },
+      { user_id: userId, name: 'Realized Loss', type: 'expense', color: '#e03131', icon: 'investment' },
     ]
 
     await supabase.from('categories').insert(defaults)
@@ -124,5 +142,5 @@ export const useCategoriesStore = defineStore('categories', () => {
     loaded.value = false
   }
 
-  return { categories, loading, error, loaded, fetchCategories, addCategory, updateCategory, deleteCategory, seedDefaultCategories, $reset }
+  return { categories, loading, error, loaded, fetchCategories, addCategory, ensureCategory, updateCategory, deleteCategory, seedDefaultCategories, $reset }
 })

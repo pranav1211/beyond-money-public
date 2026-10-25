@@ -1,8 +1,25 @@
 <script setup>
+import { defineAsyncComponent, computed } from 'vue'
+import { useToday } from '../composables/useToday'
 import AppShell from '../components/layout/AppShell.vue'
 import MonthSummary from '../components/dashboard/MonthSummary.vue'
-import NetWorthPie from '../components/dashboard/NetWorthPie.vue'
 import RecentTransactions from '../components/dashboard/RecentTransactions.vue'
+
+// NetWorthPie pulls in useNetWorth (accounts, assets, loans, cards stores).
+// Load it lazily so it's split out of the startup bundle: the dashboard shell
+// paints immediately and the donut fills in a moment later. (It's plain SVG
+// now, so it no longer brings chart.js onto the dashboard.)
+const NetWorthPie = defineAsyncComponent(() => import('../components/dashboard/NetWorthPie.vue'))
+
+// Label and data both derive from the same reactive LOCAL month. Previously the
+// label was local but the data month was UTC, so after midnight IST the chip
+// said the new month while the numbers stayed on the old one until 05:30.
+const { currentMonth } = useToday()
+const currentMonthLabel = computed(() => {
+  const [y, m] = currentMonth.value.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' })
+})
+
 </script>
 
 <template>
@@ -10,8 +27,9 @@ import RecentTransactions from '../components/dashboard/RecentTransactions.vue'
     <div class="dashboard-page fade-in">
       <div class="dashboard-grid">
         <section class="dash-card dash-card--accent">
-          <div class="dash-card-header">
+          <div class="dash-card-header dash-card-header--split">
             <span class="dash-card-title">Month Summary</span>
+            <span class="dash-card-chip">{{ currentMonthLabel }}</span>
           </div>
           <div class="dash-card-body">
             <MonthSummary />
@@ -19,8 +37,9 @@ import RecentTransactions from '../components/dashboard/RecentTransactions.vue'
         </section>
 
         <section class="dash-card dash-card--spotlight">
-          <div class="dash-card-header">
+          <div class="dash-card-header dash-card-header--split">
             <span class="dash-card-title">Net Worth</span>
+            <router-link to="/net-worth" class="view-all">View all <span aria-hidden="true">→</span></router-link>
           </div>
           <div class="dash-card-body">
             <NetWorthPie />
@@ -28,8 +47,9 @@ import RecentTransactions from '../components/dashboard/RecentTransactions.vue'
         </section>
 
         <section class="dash-card dash-card--full">
-          <div class="dash-card-header">
+          <div class="dash-card-header dash-card-header--split">
             <span class="dash-card-title">Recent Transactions</span>
+            <router-link to="/transactions" class="view-all">View all <span aria-hidden="true">→</span></router-link>
           </div>
           <div class="dash-card-body">
             <RecentTransactions />
@@ -50,15 +70,22 @@ import RecentTransactions from '../components/dashboard/RecentTransactions.vue'
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 20px;
 }
 
 .dash-card {
-  padding: 22px;
+  padding: 24px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   background: var(--bg-secondary);
   box-shadow: var(--shadow-sm);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-card-body {
+  flex: 1;
   min-width: 0;
 }
 
@@ -70,20 +97,51 @@ import RecentTransactions from '../components/dashboard/RecentTransactions.vue'
   background: var(--bg-accent), var(--bg-secondary);
 }
 
-.dash-card--spotlight {
-  background:
-    radial-gradient(circle at top right, rgba(255, 196, 87, 0.16), transparent 34%),
-    radial-gradient(circle at top left, rgba(111, 228, 201, 0.18), transparent 30%),
-    var(--bg-secondary);
+.dash-card-header {
+  margin-bottom: 18px;
 }
 
-.dash-card-header {
-  margin-bottom: 14px;
+.dash-card-header--split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .dash-card-title {
+  font-family: var(--font-display);
   font-size: 1rem;
-  font-weight: 800;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dash-card-chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.view-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 0.82rem;
+  font-weight: 700;
+  background: var(--accent-dim);
+  color: var(--accent);
+  white-space: nowrap;
+  transition: background-color var(--transition);
+}
+
+.view-all:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 @media (max-width: 900px) {
@@ -94,15 +152,15 @@ import RecentTransactions from '../components/dashboard/RecentTransactions.vue'
 
 @media (max-width: 640px) {
   .dashboard-grid {
-    gap: 12px;
+    gap: 14px;
   }
 
   .dash-card {
-    padding: 12px;
+    padding: 18px;
   }
 
   .dash-card-header {
-    margin-bottom: 8px;
+    margin-bottom: 14px;
   }
 }
 </style>

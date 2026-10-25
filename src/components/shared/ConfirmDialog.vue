@@ -2,6 +2,10 @@
 defineProps({
   title: { type: String, default: 'Confirm' },
   message: { type: String, default: 'Are you sure?' },
+  confirmLabel: { type: String, default: 'Confirm' },
+  cancelLabel: { type: String, default: 'Cancel' },
+  // 'danger' for destructive actions, 'primary' for anything else.
+  confirmVariant: { type: String, default: 'danger' },
 })
 
 const emit = defineEmits(['confirm', 'cancel'])
@@ -14,8 +18,8 @@ const emit = defineEmits(['confirm', 'cancel'])
         <h3 class="confirm-title">{{ title }}</h3>
         <p class="confirm-message">{{ message }}</p>
         <div class="confirm-actions">
-          <button class="btn-cancel" @click="emit('cancel')">Cancel</button>
-          <button class="btn-danger" @click="emit('confirm')">Confirm</button>
+          <button class="btn-cancel" @click="emit('cancel')">{{ cancelLabel }}</button>
+          <button :class="confirmVariant === 'primary' ? 'btn-primary' : 'btn-danger'" @click="emit('confirm')">{{ confirmLabel }}</button>
         </div>
       </div>
     </div>

@@ -197,6 +197,13 @@ try {
     // Deleting a label in use takes it off its rows first.
     await s('labels').deleteLabel(doomed.id)
     const localExpLabels = s('ccExpenses').expenses.find(e => e.id === exp.id)?.cc_expense_labels?.map(l => l.label_id)
+    // A category used by transactions can't be deleted; one used only by card
+    // expenses can, and leaves them uncategorised.
+    const blockedDelete = await s('categories').deleteCategory('cat1')
+    const shoes = await s('categories').addCategory({ user_id, name: 'Shoes', type: 'expense', color: '#123456' })
+    await s('ccExpenses').updateExpense(exp.id, { amount: 320, description: 'keep (edited)', category_id: shoes.id })
+    const freeDelete = await s('categories').deleteCategory(shoes.id)
+    const expCategoryAfter = s('ccExpenses').expenses.find(e => e.id === exp.id)?.category_id ?? null
     // Deleting the only row of a table must clear it in IndexedDB (INV-26).
     const sub = await s('subscriptions').addSubscription({ user_id, service_name: 'Only one', amount: 1, billing_cycle: 'monthly', category: 'other' })
     await s('subscriptions').deleteSubscription(sub.id)
@@ -206,8 +213,9 @@ try {
     const queue = await getAll('syncQueue')
     const localAccount = (await getAll('accounts')).find(a => a.id === acc.id)
     const cachedSubs = (await getAll('subscriptions')).length
+    const cat1Cached = (await getAll('categories')).some(c => c.id === 'cat1')
     db.close()
-    return { ids: { acc: acc.id, card: card.id, label: label.id, doomed: doomed.id, tx: tx.id, gone: gone.id, exp: exp.id, exp2: exp2.id }, queue, localBalance: localAccount?.current_balance, localExpLabels, cachedSubs }
+    return { ids: { acc: acc.id, card: card.id, label: label.id, doomed: doomed.id, tx: tx.id, gone: gone.id, exp: exp.id, exp2: exp2.id }, queue, localBalance: localAccount?.current_balance, localExpLabels, cachedSubs, blockedDelete, freeDelete, expCategoryAfter, shoesId: shoes.id, cat1Cached }
   }).catch(e => ({ err: e.message }))
 
   // 7) "Reconnect": replay the real queue, in order, through the app's
@@ -245,6 +253,10 @@ try {
       check(!(await one('cc_expenses', ids.exp2)), 'expense deleted offline is gone')
       check(JSON.stringify(session.localExpLabels) === JSON.stringify([ids.label]), 'deleting a label in use removed it from the expense on the device')
       check(!(await one('labels', ids.doomed)), 'deleted label is gone')
+      check(session.blockedDelete?.deleted === false && session.blockedDelete?.inUse > 0 && session.cat1Cached, `deleting a category used by transactions is refused (${JSON.stringify(session.blockedDelete)})`)
+      check(!queue.some(q => q.action === 'delete' && q.table === 'categories' && q.recordId === 'cat1'), 'and nothing is queued for it')
+      check(session.freeDelete?.deleted === true && session.expCategoryAfter === null, 'a category used only by card expenses deletes, leaving them uncategorised')
+      check((await one('cc_expenses', ids.exp))?.category_id === null && !(await one('categories', session.shoesId)), 'which syncs: expense uncategorised, category gone')
       check(session.cachedSubs === 0, `deleting the last row clears it from IndexedDB (cached: ${session.cachedSubs})`)
       check(!(await rows('cc_expense_labels')).some(l => l.label_id === ids.doomed), 'no link rows point at the deleted label')
       const unlinkAt = queue.findIndex(q => q.action === 'set_links' && q.recordId === ids.exp)

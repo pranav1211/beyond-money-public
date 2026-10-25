@@ -15,6 +15,7 @@ This repo gets updated when i make changes to the personal version. This will ke
 - A retried save can no longer create a duplicate.
 - If one change fails to sync, later changes to the same item wait for it, instead of syncing first and then being overwritten by the older change when it retries.
 - Deleting a label that's still in use works: it's taken off its transactions and card expenses first.
+- A category that transactions still use can't be deleted: the app says how many use it, with a button to show them (before, the delete failed in the background and the category came back). A category used only by card expenses still deletes and leaves them uncategorised.
 - Deleting the last item in a list (for example your only subscription) now sticks instead of reappearing after reopening the app offline.
 - Something you add while the page refreshes in the background can no longer disappear until the next refresh.
 

@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { createCollection } from '../lib/storage/collection'
 import { getAdapter } from '../lib/storage'
+import { useTransactionsStore } from './transactions'
+import { useCcExpensesStore } from './ccExpenses'
 
 function normalizeCategory(payload) {
   return {
@@ -40,8 +42,25 @@ export const useCategoriesStore = defineStore('categories', () => {
     return col.update(id, normalizeCategory(payload))
   }
 
-  function deleteCategory(id) {
-    return col.remove(id)
+  // How many transactions use a category (full history, IndexedDB-first).
+  async function usageCount(id) {
+    const transactions = useTransactionsStore()
+    await transactions.fetchTransactions()
+    return transactions.transactions.filter(t => t.category_id === id).length
+  }
+
+  // A category still used by transactions can't be deleted: they'd be left
+  // pointing at nothing, and Supabase refuses it anyway (transactions.category_id
+  // has no ON DELETE rule), so the delete would fail on every sync. Card
+  // expenses don't block it: their category is cleared first, matching the
+  // schema's ON DELETE SET NULL.
+  // Returns { deleted: true } or { deleted: false, inUse: <count> }.
+  async function deleteCategory(id) {
+    const inUse = await usageCount(id)
+    if (inUse) return { deleted: false, inUse }
+    await useCcExpensesStore().clearCategory(id)
+    await col.remove(id)
+    return { deleted: true }
   }
 
   // First sign-in: give a new user a starter set. Online only, and only when the
@@ -82,6 +101,7 @@ export const useCategoriesStore = defineStore('categories', () => {
     addCategory,
     ensureCategory,
     updateCategory,
+    usageCount,
     deleteCategory,
     seedDefaultCategories,
     $reset: col.reset,

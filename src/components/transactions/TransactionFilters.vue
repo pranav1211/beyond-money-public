@@ -89,6 +89,7 @@ onMounted(async () => {
   filters.value.account_id = route.query.account_id || null
   filters.value.category_id = route.query.category_id || null
   filters.value.type = route.query.type || null
+  if (route.query.year === 'all') selectedYear.value = null
 
   await Promise.all([
     accountsStore.fetchAccounts(),

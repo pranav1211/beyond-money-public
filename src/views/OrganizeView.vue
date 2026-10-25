@@ -86,10 +86,43 @@ async function confirmDeleteLabel() {
   deletingLabelId.value = null
 }
 
-async function confirmDeleteCategory() {
-  await categoriesStore.deleteCategory(deletingCategoryId.value)
-  deletingCategoryId.value = null
+// A category used by transactions can't be deleted (categoriesStore.deleteCategory).
+// Check before asking, so the user gets the reason instead of a confirm.
+const blockedCategory = ref(null) // { id, name, count }
+
+function showBlocked(category, count) {
+  blockedCategory.value = { id: category.id, name: category.name, count }
 }
+
+async function requestDeleteCategory(category) {
+  const count = await categoriesStore.usageCount(category.id)
+  if (count) showBlocked(category, count)
+  else deletingCategoryId.value = category.id
+}
+
+async function confirmDeleteCategory() {
+  const id = deletingCategoryId.value
+  deletingCategoryId.value = null
+  const result = await categoriesStore.deleteCategory(id)
+  // Used since the check (e.g. a transaction added meanwhile).
+  if (!result.deleted) {
+    const category = categoriesStore.categories.find(c => c.id === id)
+    if (category) showBlocked(category, result.inUse)
+  }
+}
+
+function viewBlockedTransactions() {
+  const id = blockedCategory.value.id
+  blockedCategory.value = null
+  router.push({ path: '/transactions', query: { category_id: id, year: 'all' } })
+}
+
+const blockedMessage = computed(() => {
+  const b = blockedCategory.value
+  if (!b) return ''
+  const n = b.count === 1 ? '1 transaction' : `${b.count} transactions`
+  return `“${b.name}” is used by ${n}. Move ${b.count === 1 ? 'it' : 'them'} to another category first, then delete it.`
+})
 </script>
 
 <template>
@@ -177,7 +210,7 @@ async function confirmDeleteCategory() {
                     <button class="icon-btn" title="Edit" aria-label="Edit" @click="startCategoryEdit(category)">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                     </button>
-                    <button class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete" @click="deletingCategoryId = category.id">
+                    <button class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete" @click="requestDeleteCategory(category)">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
                     </button>
                   </div>
@@ -220,7 +253,7 @@ async function confirmDeleteCategory() {
                     <button class="icon-btn" title="Edit" aria-label="Edit" @click="startCategoryEdit(category)">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                     </button>
-                    <button class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete" @click="deletingCategoryId = category.id">
+                    <button class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete" @click="requestDeleteCategory(category)">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
                     </button>
                   </div>
@@ -294,6 +327,16 @@ async function confirmDeleteCategory() {
 
       <ConfirmDialog v-if="deletingLabelId" title="Delete Label" message="Delete this label?" @confirm="confirmDeleteLabel" @cancel="deletingLabelId = null" />
       <ConfirmDialog v-if="deletingCategoryId" title="Delete Category" message="Delete this category?" @confirm="confirmDeleteCategory" @cancel="deletingCategoryId = null" />
+      <ConfirmDialog
+        v-if="blockedCategory"
+        title="Category in use"
+        :message="blockedMessage"
+        confirm-label="Show transactions"
+        confirm-variant="primary"
+        cancel-label="OK"
+        @confirm="viewBlockedTransactions"
+        @cancel="blockedCategory = null"
+      />
     </div>
   </AppShell>
 </template>

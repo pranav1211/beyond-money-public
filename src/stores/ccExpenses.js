@@ -76,6 +76,15 @@ export const useCcExpensesStore = defineStore('ccExpenses', () => {
     })
   }
 
+  // A deleted category leaves its expenses uncategorised (the schema's
+  // ON DELETE SET NULL, mirrored here so the device matches).
+  async function clearCategory(categoryId) {
+    await col.fetch()
+    for (const e of expenses.value.filter(x => x.category_id === categoryId)) {
+      await col.update(e.id, { category_id: null })
+    }
+  }
+
   // Deleting a card removes all of its expenses, open and archived.
   async function clearForCard(cardId) {
     const toDelete = expenses.value.filter(e => e.credit_card_id === cardId)
@@ -98,6 +107,7 @@ export const useCcExpensesStore = defineStore('ccExpenses', () => {
     deleteExpense,
     archiveForCard,
     clearForCard,
+    clearCategory,
     unlinkLabel: col.unlinkEverywhere,
     $reset: col.reset,
   }

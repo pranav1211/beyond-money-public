@@ -18,16 +18,18 @@ The creators and contributors of Beyond Money are not responsible for any financ
 ## Features
 
 - **Dashboard** — what's left this month, money in / spent / invested, net worth at a glance, recent transactions
-- **Accounts** — savings, cash, and wallet balances
-- **Transactions** — income, expenses, and transfers with categories and labels; grouped by day on mobile
-- **Credit Cards** — cards shown as card faces, per-card expenses, partial payments, utilization, due dates
+- **Accounts** — savings, cash, and wallet balances, hidden until you choose to show them
+- **Transactions** — income, expenses, and transfers with categories and labels, plus search and filters; grouped by day on mobile
+- **Credit Cards** — cards shown as card faces, per-card expenses, net due after part payments, credit left, utilization, due dates and payment history
 - **Loans** — money lent, organised by person. Record any payment and it settles their oldest loans first, settle everything at once, or pay one specific loan
 - **Assets** — FDs, RDs, mutual funds, stocks (multi-lot), gold, PPF, and more, with optional live stock prices
-- **Subscriptions** — recurring services with due and overdue tracking
+- **Subscriptions** — recurring services in any currency, with paid, due-soon and overdue tracking
 - **Net Worth** — month-by-month history, change vs last month, insights, and an allocation breakdown
-- **Month Report** — a full monthly breakdown you can save as a PDF
-- **Multi-Currency** — live exchange rates via Open Exchange Rates
-- **Offline-First** — every page and every add / edit / delete works offline; changes sync when you're back online
+- **Month Report** — a full monthly breakdown with insights and trends, which you can save as a PDF
+- **Categories & Labels** — organise income and expenses your way
+- **Multi-Currency** — any currencies you use with a default for totals; live rates from Open Exchange Rates, kept on the device so conversions work offline
+- **Offline-First** — every page and every add / edit / delete works offline; changes are queued on the device and sync in order when you're back online
+- **Storage Adapters** — Supabase by default, or write an adapter for your own storage ([details](#storage))
 - **PWA** — installable on mobile and desktop
 - **App Lock** — lock the app with your device fingerprint, face, or screen lock (a passkey on desktop). Enable it in Settings
 - **Light & dark themes**
@@ -213,90 +215,96 @@ Only the Supabase adapter is maintained here. Without an adapter that provides s
 
 ## Preview
 
-> The screenshots below show the 2.x design. The 3.0 redesign keeps the same pages with a new look.
+> Screenshots use sample data.
+
+![Beyond Money](https://content.beyondmebtw.com/assets/projects/bmoney/v3/00-landing.webp)
 
 ## Dashboard
 
-![Dashboard](https://content.beyondmebtw.com/assets/projects/bmoney/1dashboarddesk.webp)
+![Dashboard](https://content.beyondmebtw.com/assets/projects/bmoney/v3/01-dashboard.webp)
 
-The home base. At a glance, you can see your **latest transactions**, your **current net worth**, and a **month-based breakdown** of income vs. expenses — everything you need to understand where you stand financially, right now.
+The home base. What's left this month, money in, spent and invested with the change from last month, **net worth broken down by holding**, and the latest transactions. The full month report is one tap away.
 
 ## Transactions
 
-![Transactions](https://content.beyondmebtw.com/assets/projects/bmoney/2transactionsdesk.webp)
+![Transactions](https://content.beyondmebtw.com/assets/projects/bmoney/v3/02-transactions.webp)
 
-A full history of your financial activity. Browse through all past transactions and filter by date, type, category, account, label, or any combination of parameters to find exactly what you're looking for.
+Every transaction in one list. **Search**, or **filter** by year, month, account, type, category or label. Loans and repayments are tagged with the person they belong to.
 
 ### Adding a Transaction
 
-![Add Transaction](https://content.beyondmebtw.com/assets/projects/bmoney/2transactionsadddesk.png)
+![Add Transaction](https://content.beyondmebtw.com/assets/projects/bmoney/v3/03-add-transaction.webp)
 
-Log any financial event — **incoming money**, **expenses**, or **transfers between accounts**. Transfers allow for seamless management across multiple accounts without double-counting. Each entry supports custom labels and descriptions so you can record context that matters to you.
+Log **income, expenses, transfers, loans and repayments**. Amounts can be entered in any of your currencies with a live conversion, and labels like *Reimbursable* or *Work* add context.
 
 ## Accounts
 
-![Accounts](https://content.beyondmebtw.com/assets/projects/bmoney/3accountsdesk.webp)
+![Accounts](https://content.beyondmebtw.com/assets/projects/bmoney/v3/04-accounts.webp)
 
-Add and manage your **cash and bank accounts**, each displayed as a distinct card. View current balances, edit account details, and add new accounts as needed — keeping all your money in one organized view.
+Bank accounts, cash and wallets, with the **combined total in the wallet** up top. Balances stay hidden until you choose to show them.
 
 ## Credit Cards
 
-![Credit Cards](https://content.beyondmebtw.com/assets/projects/bmoney/4creditcardsdesk.webp)
+![Credit Cards](https://content.beyondmebtw.com/assets/projects/bmoney/v3/05-credit-cards.webp)
 
-Track your credit cards and their usage by logging transactions against them. Set **due dates** for each card to stay on top of billing cycles. The **Pay Bill** feature is transaction-based — it records the payment as a financial entry rather than functioning as an actual payment processor.
+Each card shows its **net due after part payments**, the **credit left** against its limit, utilization and the due date. Paying the bill archives that cycle's expenses into the card's payment history. Payments are recorded as transactions; the app doesn't move money.
 
-### Credit Card Payment History
+## Loans
 
-![CC History](https://content.beyondmebtw.com/assets/projects/bmoney/4cchistorydesk.webp)
+![Loans](https://content.beyondmebtw.com/assets/projects/bmoney/v3/06-loans.webp)
 
-Review a complete history of previously recorded card payments, giving you a clear picture of past billing and repayment patterns.
+Money lent, **organised by person**. A payment from someone settles their oldest loans first, or can go toward one specific loan, and people who have paid everything back move to the *Settled* tab.
 
 ## Assets
 
-![Assets](https://content.beyondmebtw.com/assets/projects/bmoney/5assetsdesk.webp)
+![Assets](https://content.beyondmebtw.com/assets/projects/bmoney/v3/07-assets.webp)
 
-Monitor financial assets such as **stocks, fixed deposits (FDs), loans**, and other holdings in a structured, easy-to-read view. Keep tabs on what you own and what you owe, all in one place.
+Stocks, mutual funds, FDs, RDs, PPF, gold and more. Stocks are tracked across **multiple purchase lots** and can refresh to **live market prices**, with the gain or loss for every holding.
 
 ## Subscriptions
 
-![Subscriptions](https://content.beyondmebtw.com/assets/projects/bmoney/6subscriptionsdesk.webp)
+![Subscriptions](https://content.beyondmebtw.com/assets/projects/bmoney/v3/08-subscriptions.webp)
 
-Stay on top of recurring expenses by managing all your **active subscriptions** in one dedicated space. Track costs, renewal cycles, and avoid surprise charges.
+Recurring services with their monthly cost. Each one shows whether it's **paid, due soon or overdue**, and they can be billed in any currency.
 
 ## Net Worth
 
-![Net Worth](https://content.beyondmebtw.com/assets/projects/bmoney/7networthdesk.webp)
+![Net Worth](https://content.beyondmebtw.com/assets/projects/bmoney/v3/09-net-worth.webp)
 
-A consolidated view of your **total net worth**, factoring in all assets and liabilities. Understand the full picture of your financial health beyond just day-to-day cash flow.
+Net worth over time, the change from last month, what you own against what you owe, and **insights** such as your growth streak and biggest holding. Month-end values are saved, so past months stay fixed.
+
+## Month Report
+
+![Month Report](https://content.beyondmebtw.com/assets/projects/bmoney/v3/10-month-report.webp)
+
+A full breakdown of any month: income, expenses, net and savings rate, auto-generated insights, cash flow, and six-month trends for spending and net worth. It can be **saved as a PDF**.
 
 ## Categories & Labels
 
-| Categories | Labels |
-|---|---|
-| ![Categories](https://content.beyondmebtw.com/assets/projects/bmoney/8categoriesdesk.webp) | ![Labels](https://content.beyondmebtw.com/assets/projects/bmoney/8labelsdesk.webp) |
+![Categories & Labels](https://content.beyondmebtw.com/assets/projects/bmoney/v3/11-labels-categories.webp)
 
-Create and manage **custom categories and labels** tailored to how you think about your money. Organize transactions your way, with as much or as little granularity as you prefer.
+**Categories** for income and expenses, and **labels** for anything that cuts across them, organised your way.
 
-## Currency Converter
+## Currency
 
-![Currency Converter](https://content.beyondmebtw.com/assets/projects/bmoney/9converterdesk.webp)
+![Currency](https://content.beyondmebtw.com/assets/projects/bmoney/v3/12-currency.webp)
 
-A built-in **currency monitoring and conversion tool** to support international usability. Quickly reference exchange rates without leaving the app.
+Add the currencies you use, pick a **default** for totals, and convert between them at **live rates**. Rates are kept on the device, so conversions work offline.
 
 ## Sync
 
-![Sync](https://content.beyondmebtw.com/assets/projects/bmoney/10syncdesk.webp)
+![Sync](https://content.beyondmebtw.com/assets/projects/bmoney/v3/13-sync.webp)
 
-A dedicated sync page to ensure your data is always up to date and that the local cache reflects the latest version. Manual sync control gives you direct accessibility and confidence that nothing is out of date.
+Built to work **offline**. Every change is saved on the device first and queued here until it syncs, in order, once you're back online. The whole app and all your data can be cached for use without a connection.
 
 ## Settings
 
-![Settings](https://content.beyondmebtw.com/assets/projects/bmoney/11settingsdesk.webp)
+![Settings](https://content.beyondmebtw.com/assets/projects/bmoney/v3/14-settings.webp)
 
 Configure the app to your preferences:
-- **App Lock** — secure access to your financial data
-- **Currency Preference** — set your default display currency
-- **Data Export** — export everything as a **CSV** or **JSON** file for external use or backup
+- **Default currency** — the currency totals and conversions use
+- **App Lock** — fingerprint or face to unlock
+- **Data Export** — transactions as a **CSV**, or a full backup as **JSON**
 
 ## License
 

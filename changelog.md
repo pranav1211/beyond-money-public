@@ -26,7 +26,7 @@ Catches the public version up with six months of changes to the personal version
 - One database file (`supabase/schema/schema.sql`) that sets up a new project or upgrades an old one, and can be run again safely. It turns on Row Level Security for every table and applies the sign-in allowlist.
 - The logo is now bundled with the app.
 - New offline end-to-end test: `npm run test:offline`.
-- License changed from MIT to the PolyForm Noncommercial License 1.0.0 (free for non-commercial use, credit required).
+- Licensed under the PolyForm Noncommercial License 1.0.0 (free for non-commercial use, credit required).
 
 ### V2.1.5 (16/04/2026)
 - First public Version released

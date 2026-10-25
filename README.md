@@ -282,10 +282,8 @@ Configure the app to your preferences:
 
 ## License
 
-Beyond Money is licensed under the **[PolyForm Noncommercial License 1.0.0](LICENSE)**.
+All versions of Beyond Money are licensed under the **[PolyForm Noncommercial License 1.0.0](LICENSE)**.
 
 - **Free for non-commercial use:** personal use, study, research, hobby projects, and use by charities, schools and similar organisations.
 - **Credit is required:** any copy or modified version you share must include the license and the `Required Notice` line crediting Pranav Veeraghanta as the author.
 - **No commercial use** without permission. That includes selling it, offering it as a paid service, or using it inside a business. To ask about commercial use, contact the author through [GitHub](https://github.com/pranav1211).
-
-Versions up to 2.1.5 were released under the MIT License; that license still applies to those versions.

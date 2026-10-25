@@ -22,6 +22,8 @@ export default defineConfig(({ mode }) => {
       vue(),
       {
         name: 'sw-build-id',
+        // Build only: dev servers also fire closeBundle on shutdown.
+        apply: 'build',
         closeBundle() {
           // Post-build: inject the build timestamp AND the full list of hashed
           // app chunks into sw.js. The chunk list is what lets the service

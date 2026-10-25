@@ -166,7 +166,87 @@ try {
   console.log('recent console   :', JSON.stringify(consoleMsgs.slice(-30), null, 1))
 
   // Assertions: offline add must render the form, navigate back, and queue the op.
-  const pass = formOk && navigated && (state.queueCount || 0) >= 1 && (state.txCount || 0) >= 1
+  const pass1 = formOk && navigated && (state.queueCount || 0) >= 1 && (state.txCount || 0) >= 1
+
+  // 6) Still offline: build on rows created offline through the app's real
+  //    stores (INV-68). Create an account, card and label; add a transaction
+  //    and a card expense against them; edit both; delete one of each.
+  const session = await page.evaluate(async () => {
+    const app = document.querySelector('#app').__vue_app__
+    const { $router: router, $pinia: pinia } = app.config.globalProperties
+    // Visit the pages so their stores exist (client-side, same Pinia).
+    for (const path of ['/credit-cards', '/organize', '/transactions']) {
+      await router.push(path)
+      await new Promise(r => setTimeout(r, 600))
+    }
+    const s = (id) => pinia._s.get(id)
+    const user_id = '00000000-0000-0000-0000-000000000001'
+    const acc = await s('accounts').addAccount({ user_id, name: 'Offline Bank', type: 'savings', currency: 'INR', current_balance: 500, is_active: true })
+    const card = await s('creditCards').addCreditCard({ user_id, name: 'Offline Card', credit_limit: 9000 })
+    const label = await s('labels').addLabel({ user_id, name: 'Offline Label', color: '#ff0000' })
+    const base = { user_id, type: 'expense', currency: 'INR', default_currency: 'INR', amount_default: 0, category_id: 'cat1', date: '2026-10-20' }
+    const tx = await s('transactions').addTransaction({ ...base, amount: 50, account_id: acc.id, description: 'keep', labels: [label.id] })
+    const gone = await s('transactions').addTransaction({ ...base, amount: 7, account_id: acc.id, description: 'gone', labels: [label.id] })
+    await s('transactions').updateTransaction(tx.id, { ...base, amount: 80, account_id: acc.id, description: 'keep (edited)', labels: [] })
+    await s('transactions').deleteTransaction(gone.id)
+    const exp = await s('ccExpenses').addExpense({ user_id, credit_card_id: card.id, amount: 300, description: 'keep', labels: [label.id] })
+    const exp2 = await s('ccExpenses').addExpense({ user_id, credit_card_id: card.id, amount: 9, description: 'gone' })
+    await s('ccExpenses').updateExpense(exp.id, { amount: 320, description: 'keep (edited)' })
+    await s('ccExpenses').deleteExpense(exp2.id)
+
+    const db = await new Promise((res, rej) => { const r = indexedDB.open('beyond-money'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+    const getAll = (store) => new Promise((res) => { const r = db.transaction(store, 'readonly').objectStore(store).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res([]) })
+    const queue = await getAll('syncQueue')
+    const localAccount = (await getAll('accounts')).find(a => a.id === acc.id)
+    db.close()
+    return { ids: { acc: acc.id, card: card.id, label: label.id, tx: tx.id, gone: gone.id, exp: exp.id, exp2: exp2.id }, queue, localBalance: localAccount?.current_balance }
+  }).catch(e => ({ err: e.message }))
+
+  // 7) "Reconnect": replay the real queue, in order, through the app's
+  //    executeOp into the memory adapter, as the sync store would.
+  const checks = []
+  const check = (ok, msg) => checks.push([!!ok, msg])
+  if (session.err) check(false, `offline session threw: ${session.err}`)
+  else {
+    const { createServer } = await import('vite')
+    const vite = await createServer({ root: ROOT, logLevel: 'error', appType: 'custom', server: { middlewareMode: true, hmr: false, watch: null }, optimizeDeps: { noDiscovery: true, entries: [] } })
+    try {
+      const { executeOp } = await vite.ssrLoadModule('/src/lib/storage/ops.js')
+      const { default: createMemoryAdapter } = await vite.ssrLoadModule('/test/adapter/memory.js')
+      const mem = createMemoryAdapter()
+      const { ids, queue } = session
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      check(Object.values(ids).every(id => uuid.test(id)), 'every row created offline has a real UUID')
+      check(!JSON.stringify(queue).includes('temp_'), 'no temp_ ids anywhere in the queue')
+      check(session.localBalance === 500 - 80, `local balance reflects add/edit/delete (got ${session.localBalance})`)
+      let replayError = null
+      for (const op of queue) {
+        try { await executeOp(mem, op) } catch (e) { replayError = `${op.action}:${op.table}: ${e.message}`; break }
+      }
+      check(!replayError, `queue drains with no failures${replayError ? ` (${replayError})` : ''}`)
+      const rows = async (t) => mem.list(t)
+      const one = async (t, id) => (await rows(t)).find(r => r.id === id)
+      check((await one('transactions', ids.tx))?.account_id === ids.acc, 'synced transaction points at the account created offline')
+      check((await one('transactions', ids.tx))?.amount === 80, 'transaction edit made offline synced')
+      check(!(await rows('transaction_labels')).some(l => l.transaction_id === ids.tx), 'transaction label removal synced')
+      check(!(await one('transactions', ids.gone)), 'transaction deleted offline is gone')
+      check(!(await rows('transaction_labels')).some(l => l.transaction_id === ids.gone), 'and left no label links')
+      check((await one('cc_expenses', ids.exp))?.credit_card_id === ids.card, 'synced expense points at the card created offline')
+      check((await one('cc_expenses', ids.exp))?.amount === 320, 'expense edit made offline synced')
+      check((await rows('cc_expense_labels')).some(l => l.cc_expense_id === ids.exp && l.label_id === ids.label), 'expense kept its label (edit without labels)')
+      check(!(await one('cc_expenses', ids.exp2)), 'expense deleted offline is gone')
+      check((await one('accounts', ids.acc))?.current_balance === 500 - 80, 'account balance after replay matches the device')
+      check(!(await rows('transactions')).some(r => 'categories' in r || 'accounts' in r || 'transaction_labels' in r), 'no app-only fields were sent to storage')
+    } finally {
+      await vite.close()
+    }
+  }
+  console.log('\n---- offline session → queue → replay ----')
+  for (const [ok, msg] of checks) console.log(ok ? '  ✓' : '  ✗', msg)
+  console.log('queue ops:', JSON.stringify((session.queue || []).map(q => `${q.action}:${q.table}`)))
+  const pass2 = checks.length > 0 && checks.every(([ok]) => ok)
+
+  const pass = pass1 && pass2
   console.log(pass ? 'TEST PASS ✅' : 'TEST FAIL ❌')
   console.log('================ END ===================\n')
   if (!pass) process.exitCode = 1

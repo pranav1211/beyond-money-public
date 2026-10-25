@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useTransactionsStore } from '../stores/transactions'
+import { useTransactionsStore, filterTransactions } from '../stores/transactions'
 import { useAccountsStore } from '../stores/accounts'
 import AppShell from '../components/layout/AppShell.vue'
 import TransactionFilters from '../components/transactions/TransactionFilters.vue'
@@ -29,8 +29,12 @@ const totalBalance = computed(() =>
   accountsStore.accounts.reduce((sum, a) => sum + Number(a.current_balance || 0), 0)
 )
 
+// Filters apply locally over the full history, so adds, edits and deletes show
+// up immediately without refetching.
+const lastFilters = ref({})
+
 const sortedTransactions = computed(() => {
-  const txns = [...transactionsStore.transactions]
+  const txns = [...filterTransactions(transactionsStore.transactions, lastFilters.value)]
   txns.sort((a, b) => {
     const dateDiff = new Date(b.date) - new Date(a.date)
     if (dateDiff !== 0) return dateDiff
@@ -54,10 +58,6 @@ const paginatedTransactions = computed(() => {
   return filteredTransactions.value.slice(start, start + perPage)
 })
 
-// Last filters applied, so they can be restored after the edit form (which may
-// load the full history for loan maths) has run.
-const lastFilters = ref({})
-
 async function handleFilter(filters) {
   lastFilters.value = filters
   currentPage.value = 1
@@ -78,7 +78,6 @@ async function handleUpdate(data) {
   const { _transfer, _fromAccountId, _toAccountId, ...submitData } = data
   await transactionsStore.updateTransaction(editingTx.value.id, submitData)
   editingTx.value = null
-  if (Object.keys(lastFilters.value).length) transactionsStore.fetchTransactions(lastFilters.value)
 }
 
 function goToPage(page) {

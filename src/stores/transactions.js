@@ -1,23 +1,8 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
+import { createCollection } from '../lib/storage/collection'
 import { useAccountsStore } from './accounts'
-import { useSyncStore } from './sync'
-import { idbGet, idbSet } from '../lib/idb'
+import { useCategoriesStore } from './categories'
 import { inDefault, defaultCurrencyCode } from '../lib/money'
-
-// Stable client-side id so a queued insert is idempotent: if the sync retry
-// fires a second time (the first network attempt failed *after* the server
-// committed), the upsert lands on the same primary key instead of minting a
-// duplicate row. See sync.js executeOperation('insert').
-function newId() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = (Math.random() * 16) | 0
-    const v = c === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
-}
 
 function normalizeTransaction(payload) {
   const normalized = {
@@ -34,7 +19,7 @@ function normalizeTransaction(payload) {
     loan_id: payload.loan_id || null,
   }
 
-  // Drop legacy field if present so we don't write it back to Supabase.
+  // Drop legacy field if present so we don't write it back.
   delete normalized.amount_inr
 
   if (normalized.type === 'transfer' || normalized.type === 'lend' || normalized.type === 'lend_repayment') {
@@ -73,7 +58,10 @@ function getAccountDelta(tx) {
   return 0
 }
 
-function applyLocalFilters(txns, filters) {
+// Filters run in the browser over the full list (storage adapters only list
+// whole tables). Exported for views that show a filtered slice, e.g. the
+// Transactions page and the Month Report.
+export function filterTransactions(txns, filters = {}) {
   let result = txns
   if (filters.month) {
     const start = `${filters.month}-01`
@@ -101,191 +89,67 @@ function applyLocalFilters(txns, filters) {
   return result
 }
 
+// A full refresh is reused for this long when a screen asks again with
+// filters (e.g. flipping filters on the Transactions page).
+const FULL_REFRESH_MS = 30000
+
 export const useTransactionsStore = defineStore('transactions', () => {
-  const transactions = ref([])
-  const loading = ref(false)
-  const error = ref(null)
-  const loaded = ref(false)
+  // Local-first storage: IndexedDB + the storage adapter (src/lib/storage).
+  // `transactions` is always the FULL history, which is also what IndexedDB
+  // holds. Rows carry transaction_labels: [{ label_id }] plus display names
+  // (categories, accounts) attached here; those are never sent to storage.
+  const col = createCollection({
+    table: 'transactions',
+    cacheKey: 'transactions',
+    orderBy: [['date', 'desc'], ['created_at', 'desc']],
+    labels: true,
+    derived: ['categories', 'accounts'],
+    hydrate: rows => rows.map(withNames),
+  })
+  const transactions = col.items
+  let lastRefresh = 0
 
-  async function fetchTransactions(filters = {}, force = false) {
-    const hasFilters = Object.keys(filters).length > 0
-    if (loaded.value && !force && !hasFilters) return transactions.value
-
-    // Always load from IndexedDB first
-    if (!loaded.value) {
-      const cached = await idbGet('transactions')
-      if (cached.length) {
-        transactions.value = cached
-        loaded.value = true
-      }
+  function withNames(tx) {
+    const cat = tx.category_id ? useCategoriesStore().categories.find(c => c.id === tx.category_id) : null
+    const acc = tx.account_id ? useAccountsStore().accounts.find(a => a.id === tx.account_id) : null
+    return {
+      ...tx,
+      categories: cat ? { name: cat.name, color: cat.color } : null,
+      accounts: acc ? { name: acc.name, currency: acc.currency } : null,
     }
-
-    // Offline: use IDB data only, apply filters client-side
-    if (!navigator.onLine) {
-      if (hasFilters) {
-        const allCached = await idbGet('transactions')
-        transactions.value = applyLocalFilters(allCached.length ? allCached : transactions.value, filters)
-      } else if (force) {
-        // A forced unfiltered read wants the FULL history (loan maths, net
-        // worth). Memory may hold a month-filtered subset left by another
-        // screen, so restore the full cached copy.
-        const allCached = await idbGet('transactions')
-        if (allCached.length) transactions.value = allCached
-      }
-      loading.value = false
-      return transactions.value
-    }
-
-    // Online: push any queued offline writes FIRST, then read — so the server
-    // response already includes them and the overwrite below can't drop an
-    // un-pushed record. "Do pending items, then proceed."
-    const sync = useSyncStore()
-    await sync.flushPending()
-
-    loading.value = !loaded.value
-    error.value = null
-
-    let query = supabase
-      .from('transactions')
-      .select('*, transaction_labels(label_id), categories(name, color), accounts(name, currency)')
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false })
-
-    if (filters.month) {
-      const start = `${filters.month}-01`
-      const [year, month] = filters.month.split('-').map(Number)
-      const nextMonth = month === 12
-        ? `${year + 1}-01-01`
-        : `${year}-${String(month + 1).padStart(2, '0')}-01`
-
-      query = query.gte('date', start).lt('date', nextMonth)
-    } else if (filters.year) {
-      const start = `${filters.year}-01-01`
-      const nextYear = `${Number(filters.year) + 1}-01-01`
-      query = query.gte('date', start).lt('date', nextYear)
-    }
-    if (filters.account_id) query = query.eq('account_id', filters.account_id)
-    if (filters.category_id) query = query.eq('category_id', filters.category_id)
-    if (filters.type) query = query.eq('type', filters.type)
-
-    const { data, error: err } = await query
-    if (err) {
-      if (!loaded.value) error.value = err.message
-    } else {
-      let result = data || []
-      if (filters.month_only) {
-        const m = String(filters.month_only).padStart(2, '0')
-        result = result.filter(tx => typeof tx.date === 'string' && tx.date.slice(5, 7) === m)
-      }
-      if (filters.label_id) {
-        result = result.filter(transaction =>
-          transaction.transaction_labels?.some(label => label.label_id === filters.label_id)
-        )
-      }
-      // Safety net: if a queued insert still hasn't reached the server (e.g. the
-      // flush above failed on a flaky reconnect), keep the un-synced local temp
-      // rows so this overwrite can't drop them. Once the insert syncs there's no
-      // pending insert left, so the temp rows fall away and the real server rows
-      // take over — no duplicates.
-      if (!hasFilters) {
-        const localTemps = transactions.value.filter(tx => String(tx.id).startsWith('temp_'))
-        const hasPendingInsert = sync.pending.some(op => op.table === 'transactions' && op.action === 'insert')
-        if (localTemps.length && hasPendingInsert) {
-          const serverIds = new Set(result.map(tx => tx.id))
-          result = [...localTemps.filter(tx => !serverIds.has(tx.id)), ...result]
-        }
-      }
-      transactions.value = result
-      if (!hasFilters) {
-        loaded.value = true
-        idbSet('transactions', transactions.value)
-      }
-    }
-
-    loading.value = false
-    return transactions.value
   }
 
-  // Offline write path: store to IDB + queue, update balances locally.
-  // No network call is attempted — the caller already knows we're offline.
-  async function addTransactionOffline(txData, labels) {
-    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const localEntry = { ...txData, id: tempId, created_at: new Date().toISOString(), transaction_labels: labels.map(label_id => ({ label_id })) }
-    transactions.value.unshift(localEntry)
-    // Await both so the write is durably persisted (cache + queue) before we
-    // return — a reconnect that fires right after must find the queued op.
-    await idbSet('transactions', transactions.value)
-    await useSyncStore().enqueue({ table: 'transactions', action: 'insert', payload: txData, _labels: labels })
-
-    const accountDelta = getAccountDelta(txData)
-    if (accountDelta) {
-      const accountsStore = useAccountsStore()
-      await accountsStore.updateBalance(txData.account_id, accountDelta)
+  // Loads the full history (IndexedDB first, then storage when online) and
+  // returns it, filtered when `filters` is given. `force` refreshes from
+  // storage even if already loaded.
+  async function fetchTransactions(filters = {}, force = false) {
+    const hasFilters = Object.keys(filters).length > 0
+    const fresh = Date.now() - lastRefresh < FULL_REFRESH_MS
+    if (!col.loaded.value || force || (hasFilters && !fresh)) {
+      // Names are attached from these, so load them first (cache-first, fast).
+      await Promise.all([
+        useCategoriesStore().fetchCategories(),
+        useAccountsStore().fetchAccounts(),
+      ])
+      await col.fetch(true)
+      if (navigator.onLine) lastRefresh = Date.now()
     }
-
-    loaded.value = true
-    return localEntry
+    return hasFilters ? filterTransactions(transactions.value, filters) : transactions.value
   }
 
   async function addTransaction(payload) {
     const { labels = [], ...rest } = payload
     const txData = normalizeTransaction(rest)
-    // Assign the real PK up front (online and offline) so the insert is
-    // idempotent on retry — no duplicate rows from a re-fired queue op.
-    if (!txData.id) txData.id = newId()
+    if (!txData.created_at) txData.created_at = new Date().toISOString()
 
-    // Offline: don't touch the network — write locally and queue immediately.
-    if (!navigator.onLine) return addTransactionOffline(txData, labels)
-
-    const { data, error: err } = await supabase
-      .from('transactions')
-      .insert(txData)
-      .select('*, transaction_labels(label_id), categories(name, color), accounts(name, currency)')
-      .single()
-
-    if (err) {
-      // Network said online but the write still failed — fall back to queue.
-      return addTransactionOffline(txData, labels)
-    }
-
-    if (labels.length) {
-      const { error: labelsError } = await supabase.from('transaction_labels').insert(
-        labels.map(label_id => ({ transaction_id: data.id, label_id }))
-      )
-      if (labelsError) throw labelsError
-    }
+    const saved = await col.insert(withNames(txData), { labels, prepend: true })
 
     const accountDelta = getAccountDelta(txData)
-    if (accountDelta) {
-      const accountsStore = useAccountsStore()
-      await accountsStore.updateBalance(txData.account_id, accountDelta)
-    }
-
-    transactions.value.unshift({ ...data, transaction_labels: labels.map(label_id => ({ label_id })) })
-    loaded.value = true
-    idbSet('transactions', transactions.value)
-    return data
+    if (accountDelta) await useAccountsStore().updateBalance(txData.account_id, accountDelta)
+    return saved
   }
 
-  async function updateTransactionOffline(id, txData, labels, existing, oldAccountDelta, newAccountDelta) {
-    const index = transactions.value.findIndex(transaction => transaction.id === id)
-    if (index !== -1) {
-      transactions.value[index] = { ...transactions.value[index], ...txData, transaction_labels: labels.map(label_id => ({ label_id })) }
-    }
-    await idbSet('transactions', transactions.value)
-    await useSyncStore().enqueue({ table: 'transactions', action: 'update', recordId: id, payload: txData, _labels: labels })
-
-    const accountsStore = useAccountsStore()
-    if (existing?.account_id && (existing.account_id !== txData.account_id || oldAccountDelta !== newAccountDelta)) {
-      await accountsStore.updateBalance(existing.account_id, -oldAccountDelta)
-    }
-    if (txData.account_id && (!existing || existing.account_id !== txData.account_id || oldAccountDelta !== newAccountDelta)) {
-      await accountsStore.updateBalance(txData.account_id, newAccountDelta)
-    }
-
-    return transactions.value[index]
-  }
-
+  // labels: the full label list for the row (an edit always sends all labels).
   async function updateTransaction(id, payload) {
     const existing = transactions.value.find(transaction => transaction.id === id)
     const { labels = [], ...rest } = payload
@@ -294,73 +158,26 @@ export const useTransactionsStore = defineStore('transactions', () => {
     const oldAccountDelta = existing ? getAccountDelta(existing) : 0
     const newAccountDelta = getAccountDelta(txData)
 
-    // Offline: update locally + queue, never hit the network.
-    if (!navigator.onLine) return updateTransactionOffline(id, txData, labels, existing, oldAccountDelta, newAccountDelta)
-
-    const { data, error: err } = await supabase
-      .from('transactions')
-      .update(txData)
-      .eq('id', id)
-      .select('*, transaction_labels(label_id), categories(name, color), accounts(name, currency)')
-      .single()
-
-    if (err) {
-      return updateTransactionOffline(id, txData, labels, existing, oldAccountDelta, newAccountDelta)
-    }
+    const saved = await col.update(id, withNames(txData), { labels })
 
     const accountsStore = useAccountsStore()
-
     if (existing?.account_id && (existing.account_id !== txData.account_id || oldAccountDelta !== newAccountDelta)) {
       await accountsStore.updateBalance(existing.account_id, -oldAccountDelta)
     }
     if (txData.account_id && (!existing || existing.account_id !== txData.account_id || oldAccountDelta !== newAccountDelta)) {
       await accountsStore.updateBalance(txData.account_id, newAccountDelta)
     }
-
-    await supabase.from('transaction_labels').delete().eq('transaction_id', id)
-    if (labels.length) {
-      const { error: labelsError } = await supabase.from('transaction_labels').insert(
-        labels.map(label_id => ({ transaction_id: id, label_id }))
-      )
-      if (labelsError) throw labelsError
-    }
-
-    const index = transactions.value.findIndex(transaction => transaction.id === id)
-    if (index !== -1) transactions.value[index] = { ...data, transaction_labels: labels.map(label_id => ({ label_id })) }
-    idbSet('transactions', transactions.value)
-
-    return data
+    return saved
   }
 
   async function deleteTransaction(id) {
     const transaction = transactions.value.find(tx => tx.id === id)
     if (!transaction) return
 
-    // Update account balances locally first
     const accountDelta = getAccountDelta(transaction)
-    if (accountDelta) {
-      const accountsStore = useAccountsStore()
-      await accountsStore.updateBalance(transaction.account_id, -accountDelta)
-    }
+    if (accountDelta) await useAccountsStore().updateBalance(transaction.account_id, -accountDelta)
 
-    // Remove locally immediately
-    transactions.value = transactions.value.filter(tx => tx.id !== id)
-    idbSet('transactions', transactions.value)
-
-    const isTemp = String(id).startsWith('temp_')
-
-    // Offline: queue the delete (real records only) and skip the network.
-    if (!navigator.onLine) {
-      if (!isTemp) await useSyncStore().enqueue({ table: 'transactions', action: 'delete', recordId: id })
-      return
-    }
-
-    // Try remote delete
-    await supabase.from('transaction_labels').delete().eq('transaction_id', id)
-    const { error: err } = await supabase.from('transactions').delete().eq('id', id)
-    if (err && !isTemp) {
-      useSyncStore().enqueue({ table: 'transactions', action: 'delete', recordId: id })
-    }
+    await col.remove(id)
   }
 
   function getRunningBalance(txns) {
@@ -380,17 +197,15 @@ export const useTransactionsStore = defineStore('transactions', () => {
   }
 
   function $reset() {
-    transactions.value = []
-    loading.value = false
-    error.value = null
-    loaded.value = false
+    col.reset()
+    lastRefresh = 0
   }
 
   return {
     transactions,
-    loading,
-    error,
-    loaded,
+    loading: col.loading,
+    error: col.error,
+    loaded: col.loaded,
     fetchTransactions,
     addTransaction,
     updateTransaction,

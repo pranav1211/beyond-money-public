@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
+import { getAuth } from '../lib/storage'
 import { useCategoriesStore } from './categories'
 import { useCurrenciesStore } from './currencies'
 import { useSyncStore } from './sync'
@@ -63,14 +63,14 @@ export const useAuthStore = defineStore('auth', () => {
       // history.replaceState strips the token before gotrue's (lock-deferred)
       // URL detection reads it, silently dropping the login.
       try {
-        const { data } = await supabase.auth.getSession()
+        const { data } = await getAuth().getSession()
         session.value = data.session
         user.value = data.session?.user ?? null
         cacheSession(data.session)
       } catch { /* network failure mid-callback — fall through, watcher recovers */ }
     } else {
       // Normal launch: synchronously seed from cached session so the router
-      // guard unblocks WITHOUT waiting on the network. supabase.auth.getSession()
+      // guard unblocks WITHOUT waiting on the network. getAuth().getSession()
       // does a token-refresh roundtrip when the access token is expired (default
       // 1h life), which on a cold PWA launch blocks first paint even though all
       // assets are served from cache. We trust the cached session for the
@@ -94,7 +94,7 @@ export const useAuthStore = defineStore('auth', () => {
     // so a stale/invalid cached session self-corrects without blocking boot.
     // Skipped on a redirect callback — we already awaited getSession() above.
     if (!isRedirectCallback) {
-      supabase.auth.getSession().then(({ data }) => {
+      getAuth().getSession().then(({ data }) => {
         session.value = data.session
         user.value = data.session?.user ?? null
         cacheSession(data.session)
@@ -108,7 +108,7 @@ export const useAuthStore = defineStore('auth', () => {
     const syncStore = useSyncStore()
     syncStore.loadState().then(() => syncStore.processQueue()).catch(() => {})
 
-    supabase.auth.onAuthStateChange(async (event, currentSession) => {
+    getAuth().onAuthStateChange(async (event, currentSession) => {
       if (event === 'SIGNED_OUT' && !intentionalLogout) {
         // Token refresh failed (common on mobile/background) — keep cached session
         // so user isn't kicked to login, especially when offline
@@ -131,7 +131,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login() {
-    await supabase.auth.signInWithOAuth({
+    await getAuth().signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}`,
@@ -184,7 +184,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     intentionalLogout = true
-    await supabase.auth.signOut()
+    await getAuth().signOut()
     user.value = null
     session.value = null
 
@@ -205,7 +205,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     await resetLocalData()
 
-    const { data, error } = await supabase.auth.setSession({
+    const { data, error } = await getAuth().setSession({
       access_token: entry.access_token,
       refresh_token: entry.refresh_token,
     })

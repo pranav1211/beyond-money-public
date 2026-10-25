@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { supabase } from '../lib/supabase'
+import { getAdapter } from '../lib/storage'
+import { executeOp } from '../lib/storage/ops'
 import {
   syncQueueAdd,
   syncQueueGetAll,
@@ -94,7 +95,7 @@ export const useSyncStore = defineStore('sync', () => {
     lastSyncError.value = null
 
     // Refresh auth session before syncing — expired tokens cause first operation to fail
-    try { await supabase.auth.getSession() } catch {}
+    try { await getAdapter().auth?.getSession?.() } catch {}
 
     const items = await syncQueueGetAll()
     let hadFailure = false
@@ -278,62 +279,9 @@ export const useSyncStore = defineStore('sync', () => {
   }
 })
 
-async function executeOperation(item) {
-  const { table, action, payload, id: _queueId, ...rest } = item
-  const recordId = rest.recordId
-
-  switch (action) {
-    case 'insert': {
-      // When the payload carries a client-generated PK, upsert with
-      // ignoreDuplicates so a retried op (first attempt failed *after* the
-      // server committed) is a no-op instead of inserting a duplicate row.
-      // Payloads without an id fall back to a plain insert (server mints the PK).
-      let recordPk = payload?.id || null
-      if (recordPk) {
-        const { error } = await supabase.from(table).upsert(payload, { onConflict: 'id', ignoreDuplicates: true })
-        if (error) throw error
-      } else {
-        const { data, error } = await supabase.from(table).insert(payload).select().single()
-        if (error) throw error
-        recordPk = data?.id
-      }
-      // Sync labels for transactions (composite PK → duplicate inserts no-op).
-      if (table === 'transactions' && rest._labels?.length && recordPk) {
-        await supabase.from('transaction_labels').insert(
-          rest._labels.map(label_id => ({ transaction_id: recordPk, label_id }))
-        ).catch(() => {})
-      }
-      if (table === 'cc_expenses' && rest._labels?.length && recordPk) {
-        await supabase.from('cc_expense_labels').insert(
-          rest._labels.map(label_id => ({ cc_expense_id: recordPk, label_id }))
-        ).catch(() => {})
-      }
-      break
-    }
-    case 'update': {
-      const { error } = await supabase.from(table).update(payload).eq('id', recordId)
-      if (error) throw error
-      if (table === 'cc_expenses' && Array.isArray(rest._labels)) {
-        await supabase.from('cc_expense_labels').delete().eq('cc_expense_id', recordId).catch(() => {})
-        if (rest._labels.length) {
-          await supabase.from('cc_expense_labels').insert(
-            rest._labels.map(label_id => ({ cc_expense_id: recordId, label_id }))
-          ).catch(() => {})
-        }
-      }
-      break
-    }
-    case 'delete': {
-      const { error } = await supabase.from(table).delete().eq('id', recordId)
-      if (error) throw error
-      break
-    }
-    case 'upsert': {
-      const { error } = await supabase.from(table).upsert(payload)
-      if (error) throw error
-      break
-    }
-    default:
-      throw new Error(`Unknown sync action: ${action}`)
-  }
+// Queued writes replay through the same executeOp as live writes
+// (src/lib/storage/ops.js), so an operation behaves identically whether it ran
+// online or was queued while offline. INV-66.
+function executeOperation(item) {
+  return executeOp(getAdapter(), item)
 }

@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { reportRequestSuccess, reportRequestFailure } from '../composables/useServiceStatus'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// Used only by the Supabase storage adapter (src/lib/storage/adapters/supabase.js).
+// The rest of the app talks to storage through getAdapter(), never to Supabase
+// directly (INV-67). The client is created on first use, so an app configured
+// for a different adapter doesn't need (or crash on missing) Supabase env vars.
 
 // Bound EVERY Supabase network call so a slow/hung backend can't leave the UI
 // spinning forever. The 2026-08-28 Supabase incident (API latency + JWT
@@ -41,9 +43,19 @@ async function fetchWithTimeout(input, init = {}) {
   }
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  global: { fetch: fetchWithTimeout },
-})
+let client = null
+
+export function getSupabase() {
+  if (!client) {
+    const url = import.meta.env.VITE_SUPABASE_URL
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    if (!url || !anonKey) {
+      throw new Error('Supabase storage needs VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (see README).')
+    }
+    client = createClient(url, anonKey, { global: { fetch: fetchWithTimeout } })
+  }
+  return client
+}
 
 // Cheap liveness probe to auto-clear the degraded banner once the backend
 // recovers. Runs through fetchWithTimeout so a success reports through the same
@@ -51,8 +63,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // (no user session), so it works even while the user's JWT is being rejected.
 export async function pingBackend() {
   try {
-    const res = await fetchWithTimeout(`${supabaseUrl}/auth/v1/health`, {
-      headers: { apikey: supabaseAnonKey },
+    const url = import.meta.env.VITE_SUPABASE_URL
+    const res = await fetchWithTimeout(`${url}/auth/v1/health`, {
+      headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
     })
     return res.ok
   } catch {

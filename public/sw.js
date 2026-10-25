@@ -1,5 +1,5 @@
 // Beyond Money Service Worker
-const DISPLAY_VERSION = "3.0.1";
+const DISPLAY_VERSION = "3.1.0";
 const BUILD_ID = "__BUILD_TIMESTAMP__";
 const CACHE_NAME = `bm-cache-${DISPLAY_VERSION}-${BUILD_ID}`;
 

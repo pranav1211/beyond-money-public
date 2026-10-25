@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useTransactionsStore } from '../stores/transactions'
+import { useTransactionsStore, filterTransactions } from '../stores/transactions'
 import { useCategoriesStore } from '../stores/categories'
 import { useLabelsStore } from '../stores/labels'
 import { useAccountsStore } from '../stores/accounts'
@@ -99,7 +99,7 @@ const canGoPrev = computed(() => month.value > MIN_MONTH)
 async function loadAll() {
   loading.value = true
   await Promise.all([
-    transactionsStore.fetchTransactions({ month: month.value }, true),
+    transactionsStore.fetchTransactions({}, true),
     categoriesStore.fetchCategories(),
     labelsStore.fetchLabels(),
     accountsStore.fetchAccounts(),
@@ -112,11 +112,10 @@ async function loadAll() {
   ])
   await currencyStore.fetchRate(currenciesStore.codes.length ? currenciesStore.codes : ['INR', 'USD'])
 
-  const { supabase } = await import('../lib/supabase')
-  const { data: allData } = await supabase
-    .from('transactions')
-    .select('id, date, type, amount, amount_default, default_currency, currency, category_id, account_id, notes, loan_id, borrower_name')
-  allTxns.value = allData || []
+  // Cross-month figures (net worth history, loans) need every transaction:
+  // the store holds the complete history (paged past any row cap, INV-65),
+  // and offline it's the cached copy.
+  allTxns.value = transactionsStore.transactions
 
   generatedAt.value = new Date()
   loading.value = false
@@ -131,7 +130,8 @@ watch(month, async (m) => {
 
 // --------- Derived data ---------
 
-const txns = computed(() => transactionsStore.transactions)
+// The report month's transactions (filtered locally from the full history).
+const txns = computed(() => filterTransactions(transactionsStore.transactions, { month: month.value }))
 
 // Expenses exclude investments (category named "Investment") — those are money
 // moved into assets, broken out into their own section below. expenseTxns drives

@@ -1,8 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
-import { idbGet, idbSet } from '../lib/idb'
-import { useSyncStore } from './sync'
+import { createCollection } from '../lib/storage/collection'
 
 function num(v) {
   if (v === '' || v == null) return null
@@ -88,121 +85,42 @@ function normalizeAsset(payload) {
 }
 
 export const useAssetsStore = defineStore('assets', () => {
-  const assets = ref([])
-  const loading = ref(false)
-  const error = ref(null)
-  const loaded = ref(false)
+  // Local-first storage: IndexedDB + the storage adapter (src/lib/storage).
+  const col = createCollection({ table: 'assets', cacheKey: 'assets', orderBy: [['name', 'asc']] })
 
-  async function fetchAssets(force = false) {
-    if (loaded.value && !force) return assets.value
-
-    if (!loaded.value) {
-      const cached = await idbGet('assets')
-      if (cached.length) {
-        assets.value = cached
-        loaded.value = true
-      }
-    }
-
-    if (!navigator.onLine) { loading.value = false; return assets.value }
-
-    // Drain queued offline writes before reading so the fetch reflects them
-    // instead of overwriting un-pushed records.
-    await useSyncStore().flushPending()
-
-    loading.value = !loaded.value
-    const { data, error: err } = await supabase.from('assets').select('*').order('name')
-    if (err) {
-      if (!loaded.value) error.value = err.message
-    } else {
-      assets.value = data || []
-      loaded.value = true
-      idbSet('assets', assets.value)
-    }
-    loading.value = false
-    return assets.value
+  function fetchAssets(force = false) {
+    return col.fetch(force)
   }
 
-  async function addAssetOffline(normalized) {
-    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const localEntry = { ...normalized, id: tempId }
-    assets.value.push(localEntry)
-    loaded.value = true
-    await idbSet('assets', assets.value)
-    await useSyncStore().enqueue({ table: 'assets', action: 'insert', payload: normalized })
-    return localEntry
+  function addAsset(payload) {
+    return col.insert(normalizeAsset(payload))
   }
 
-  async function addAsset(payload) {
-    const normalized = normalizeAsset(payload)
-
-    // Offline: write locally + queue, no network.
-    if (!navigator.onLine) return addAssetOffline(normalized)
-
-    const { data, error: err } = await supabase.from('assets').insert(normalized).select().single()
-    if (err) return addAssetOffline(normalized)
-
-    assets.value.push(data)
-    loaded.value = true
-    idbSet('assets', assets.value)
-    return data
+  function updateAsset(id, payload) {
+    return col.update(id, normalizeAsset(payload))
   }
 
-  async function updateAsset(id, payload) {
-    const normalized = normalizeAsset(payload)
-    const index = assets.value.findIndex(asset => asset.id === id)
-
-    if (index !== -1) assets.value[index] = { ...assets.value[index], ...normalized }
-    idbSet('assets', assets.value)
-
-    // Offline: local state already updated — queue and skip the network.
-    if (!navigator.onLine) {
-      await useSyncStore().enqueue({ table: 'assets', action: 'update', recordId: id, payload: normalized })
-      return assets.value[index]
-    }
-
-    const { data, error: err } = await supabase.from('assets').update(normalized).eq('id', id).select().single()
-    if (err) {
-      useSyncStore().enqueue({ table: 'assets', action: 'update', recordId: id, payload: normalized })
-      return assets.value[index]
-    }
-
-    if (index !== -1) assets.value[index] = data
-    idbSet('assets', assets.value)
-    return data
-  }
-
-  async function deleteAsset(id) {
-    assets.value = assets.value.filter(asset => asset.id !== id)
-    idbSet('assets', assets.value)
-
-    const isTemp = String(id).startsWith('temp_')
-
-    // Offline: queue (real records only) and skip the network.
-    if (!navigator.onLine) {
-      if (!isTemp) await useSyncStore().enqueue({ table: 'assets', action: 'delete', recordId: id })
-      return
-    }
-
-    const { error: err } = await supabase.from('assets').delete().eq('id', id)
-    if (err && !isTemp) {
-      useSyncStore().enqueue({ table: 'assets', action: 'delete', recordId: id })
-    }
+  function deleteAsset(id) {
+    return col.remove(id)
   }
 
   async function markRefreshed(id, current_value) {
-    const asset = assets.value.find(a => a.id === id)
+    const asset = col.items.value.find(a => a.id === id)
     if (!asset) return
     const payload = { ...asset, current_value: Number(current_value ?? asset.current_value), price_updated_at: new Date().toISOString() }
     return updateAsset(id, payload)
   }
 
-  function $reset() {
-    assets.value = []
-    loading.value = false
-    error.value = null
-    loaded.value = false
+  return {
+    assets: col.items,
+    loading: col.loading,
+    error: col.error,
+    loaded: col.loaded,
+    fetchAssets,
+    addAsset,
+    updateAsset,
+    deleteAsset,
+    markRefreshed,
+    $reset: col.reset,
   }
-
-  return { assets, loading, error, loaded, fetchAssets, addAsset, updateAsset, deleteAsset, markRefreshed, $reset }
 })

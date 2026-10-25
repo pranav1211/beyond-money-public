@@ -1,8 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
-import { idbGet, idbSet } from '../lib/idb'
-import { useSyncStore } from './sync'
+import { createCollection } from '../lib/storage/collection'
 
 function normalizeAccount(payload) {
   return {
@@ -15,125 +12,42 @@ function normalizeAccount(payload) {
 }
 
 export const useAccountsStore = defineStore('accounts', () => {
-  const accounts = ref([])
-  const loading = ref(false)
-  const error = ref(null)
-  const loaded = ref(false)
+  // Local-first storage: IndexedDB + the storage adapter (src/lib/storage).
+  const col = createCollection({ table: 'accounts', cacheKey: 'accounts', orderBy: [['name', 'asc']] })
 
-  async function fetchAccounts(force = false) {
-    if (loaded.value && !force) return accounts.value
-
-    // Load from IndexedDB first for instant display
-    if (!loaded.value) {
-      const cached = await idbGet('accounts')
-      if (cached.length) {
-        accounts.value = cached
-        loaded.value = true
-      }
-    }
-
-    if (!navigator.onLine) { loading.value = false; return accounts.value }
-
-    // Drain queued offline writes before reading so the fetch reflects them
-    // instead of overwriting un-pushed records.
-    await useSyncStore().flushPending()
-
-    loading.value = !loaded.value
-    const { data, error: err } = await supabase.from('accounts').select('*').order('name')
-    if (err) {
-      if (!loaded.value) error.value = err.message
-    } else {
-      accounts.value = data || []
-      loaded.value = true
-      idbSet('accounts', accounts.value)
-    }
-    loading.value = false
-    return accounts.value
+  function fetchAccounts(force = false) {
+    return col.fetch(force)
   }
 
-  async function addAccountOffline(normalized) {
-    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const localEntry = { ...normalized, id: tempId }
-    accounts.value.push(localEntry)
-    loaded.value = true
-    await idbSet('accounts', accounts.value)
-    await useSyncStore().enqueue({ table: 'accounts', action: 'insert', payload: normalized })
-    return localEntry
+  function addAccount(payload) {
+    return col.insert(normalizeAccount(payload))
   }
 
-  async function addAccount(payload) {
-    const normalized = normalizeAccount(payload)
-
-    // Offline: create temp local entry and queue, no network.
-    if (!navigator.onLine) return addAccountOffline(normalized)
-
-    const { data, error: err } = await supabase.from('accounts').insert(normalized).select().single()
-    if (err) return addAccountOffline(normalized)
-
-    accounts.value.push(data)
-    loaded.value = true
-    idbSet('accounts', accounts.value)
-    return data
+  function updateAccount(id, payload) {
+    return col.update(id, normalizeAccount(payload))
   }
 
-  async function updateAccount(id, payload) {
-    const normalized = normalizeAccount(payload)
-    const index = accounts.value.findIndex(account => account.id === id)
-
-    // Update local state immediately
-    if (index !== -1) accounts.value[index] = { ...accounts.value[index], ...normalized }
-    idbSet('accounts', accounts.value)
-
-    // Offline: local state already updated — queue and skip the network.
-    if (!navigator.onLine) {
-      await useSyncStore().enqueue({ table: 'accounts', action: 'update', recordId: id, payload: normalized })
-      return accounts.value[index]
-    }
-
-    const { data, error: err } = await supabase.from('accounts').update(normalized).eq('id', id).select().single()
-    if (err) {
-      // Queue for retry - local state already updated
-      useSyncStore().enqueue({ table: 'accounts', action: 'update', recordId: id, payload: normalized })
-      return accounts.value[index]
-    }
-
-    if (index !== -1) accounts.value[index] = data
-    idbSet('accounts', accounts.value)
-    return data
-  }
-
-  async function deleteAccount(id) {
-    // Update local state immediately
-    accounts.value = accounts.value.filter(account => account.id !== id)
-    idbSet('accounts', accounts.value)
-
-    const isTemp = String(id).startsWith('temp_')
-
-    // Offline: queue (real records only) and skip the network.
-    if (!navigator.onLine) {
-      if (!isTemp) await useSyncStore().enqueue({ table: 'accounts', action: 'delete', recordId: id })
-      return
-    }
-
-    const { error: err } = await supabase.from('accounts').delete().eq('id', id)
-    if (err && !isTemp) {
-      useSyncStore().enqueue({ table: 'accounts', action: 'delete', recordId: id })
-    }
+  function deleteAccount(id) {
+    return col.remove(id)
   }
 
   async function updateBalance(id, delta) {
-    const account = accounts.value.find(entry => entry.id === id)
+    const account = col.items.value.find(entry => entry.id === id)
     if (!account) return
     const nextBalance = Number(account.current_balance || 0) + Number(delta || 0)
     await updateAccount(id, { ...account, current_balance: nextBalance })
   }
 
-  function $reset() {
-    accounts.value = []
-    loading.value = false
-    error.value = null
-    loaded.value = false
+  return {
+    accounts: col.items,
+    loading: col.loading,
+    error: col.error,
+    loaded: col.loaded,
+    fetchAccounts,
+    addAccount,
+    updateAccount,
+    deleteAccount,
+    updateBalance,
+    $reset: col.reset,
   }
-
-  return { accounts, loading, error, loaded, fetchAccounts, addAccount, updateAccount, deleteAccount, updateBalance, $reset }
 })

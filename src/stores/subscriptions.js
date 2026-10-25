@@ -1,8 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
-import { idbGet, idbSet } from '../lib/idb'
-import { useSyncStore } from './sync'
+import { createCollection } from '../lib/storage/collection'
 
 function normalizeSubscription(payload) {
   return {
@@ -20,91 +17,38 @@ function normalizeSubscription(payload) {
 }
 
 export const useSubscriptionsStore = defineStore('subscriptions', () => {
-  const subscriptions = ref([])
-  const loading = ref(false)
-  const error = ref(null)
-  const loaded = ref(false)
+  // Local-first storage: IndexedDB + the storage adapter (src/lib/storage).
+  const col = createCollection({
+    table: 'subscriptions',
+    cacheKey: 'subscriptions',
+    orderBy: [['next_payment_date', 'asc'], ['service_name', 'asc']],
+  })
 
-  async function fetchSubscriptions(force = false) {
-    if (loaded.value && !force) return subscriptions.value
-
-    if (!loaded.value) {
-      const cached = await idbGet('subscriptions')
-      if (cached.length) {
-        subscriptions.value = cached
-        loaded.value = true
-      }
-    }
-
-    if (!navigator.onLine) { loading.value = false; return subscriptions.value }
-
-    loading.value = !loaded.value
-    const { data, error: err } = await supabase.from('subscriptions').select('*').order('next_payment_date').order('service_name')
-    if (err) {
-      if (!loaded.value) error.value = err.message
-    } else {
-      subscriptions.value = data || []
-      loaded.value = true
-      idbSet('subscriptions', subscriptions.value)
-    }
-    loading.value = false
-    return subscriptions.value
+  function fetchSubscriptions(force = false) {
+    return col.fetch(force)
   }
 
-  async function addSubscription(payload) {
-    const normalized = normalizeSubscription(payload)
-
-    const { data, error: err } = await supabase.from('subscriptions').insert(normalized).select().single()
-    if (err) {
-      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-      const localEntry = { ...normalized, id: tempId }
-      subscriptions.value.push(localEntry)
-      loaded.value = true
-      idbSet('subscriptions', subscriptions.value)
-      useSyncStore().enqueue({ table: 'subscriptions', action: 'insert', payload: normalized })
-      return localEntry
-    }
-
-    subscriptions.value.push(data)
-    loaded.value = true
-    idbSet('subscriptions', subscriptions.value)
-    return data
+  function addSubscription(payload) {
+    return col.insert(normalizeSubscription(payload))
   }
 
-  async function updateSubscription(id, payload) {
-    const normalized = normalizeSubscription(payload)
-    const index = subscriptions.value.findIndex(entry => entry.id === id)
-
-    if (index !== -1) subscriptions.value[index] = { ...subscriptions.value[index], ...normalized }
-    idbSet('subscriptions', subscriptions.value)
-
-    const { data, error: err } = await supabase.from('subscriptions').update(normalized).eq('id', id).select().single()
-    if (err) {
-      useSyncStore().enqueue({ table: 'subscriptions', action: 'update', recordId: id, payload: normalized })
-      return subscriptions.value[index]
-    }
-
-    if (index !== -1) subscriptions.value[index] = data
-    idbSet('subscriptions', subscriptions.value)
-    return data
+  function updateSubscription(id, payload) {
+    return col.update(id, normalizeSubscription(payload))
   }
 
-  async function deleteSubscription(id) {
-    subscriptions.value = subscriptions.value.filter(entry => entry.id !== id)
-    idbSet('subscriptions', subscriptions.value)
-
-    const { error: err } = await supabase.from('subscriptions').delete().eq('id', id)
-    if (err && !String(id).startsWith('temp_')) {
-      useSyncStore().enqueue({ table: 'subscriptions', action: 'delete', recordId: id })
-    }
+  function deleteSubscription(id) {
+    return col.remove(id)
   }
 
-  function $reset() {
-    subscriptions.value = []
-    loading.value = false
-    error.value = null
-    loaded.value = false
+  return {
+    subscriptions: col.items,
+    loading: col.loading,
+    error: col.error,
+    loaded: col.loaded,
+    fetchSubscriptions,
+    addSubscription,
+    updateSubscription,
+    deleteSubscription,
+    $reset: col.reset,
   }
-
-  return { subscriptions, loading, error, loaded, fetchSubscriptions, addSubscription, updateSubscription, deleteSubscription, $reset }
 })

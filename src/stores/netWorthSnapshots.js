@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
+import { getAdapter } from '../lib/storage'
+import { newId } from '../lib/storage/ids'
 import { idbGet, idbSet } from '../lib/idb'
 import { useAuthStore } from './auth'
 
@@ -28,17 +29,14 @@ export const useNetWorthSnapshotsStore = defineStore('netWorthSnapshots', () => 
 
     if (!navigator.onLine) return snapshots.value
 
-    const { data, error } = await supabase
-      .from('networth_snapshots')
-      .select('*')
-      .order('month')
     // Missing table (migration not applied yet) or any error → keep cache/empty;
     // reconstruction still renders the chart.
-    if (!error && data) {
+    try {
+      const data = await getAdapter().list('networth_snapshots', { orderBy: [['month', 'asc']] })
       snapshots.value = data
       loaded.value = true
       idbSet('netWorthSnapshots', snapshots.value)
-    }
+    } catch { /* keep cache */ }
     return snapshots.value
   }
 
@@ -50,6 +48,8 @@ export const useNetWorthSnapshotsStore = defineStore('netWorthSnapshots', () => 
 
     const round = (v) => Math.round(Number(v || 0) * 100) / 100
     const row = {
+      // Keep the month's existing id; adapters without generated keys need one.
+      id: snapshots.value.find(s => s.month === month)?.id || newId(),
       user_id: uid,
       month,
       net_worth: round(net_worth),
@@ -60,12 +60,11 @@ export const useNetWorthSnapshotsStore = defineStore('netWorthSnapshots', () => 
       captured_at: new Date().toISOString(),
     }
 
-    const { data, error } = await supabase
-      .from('networth_snapshots')
-      .upsert(row, { onConflict: 'user_id,month' })
-      .select()
-      .single()
-    if (error || !data) return null
+    let data
+    try {
+      data = await getAdapter().upsert('networth_snapshots', row, ['user_id', 'month'])
+    } catch { return null }
+    if (!data) return null
 
     const i = snapshots.value.findIndex(s => s.month === data.month)
     if (i >= 0) snapshots.value[i] = data

@@ -1,8 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
-import { idbGet, idbSet } from '../lib/idb'
-import { useSyncStore } from './sync'
+import { createCollection } from '../lib/storage/collection'
 
 function normalizeCard(payload) {
   const clean = {
@@ -22,91 +19,34 @@ function normalizeCard(payload) {
 }
 
 export const useCreditCardsStore = defineStore('creditCards', () => {
-  const creditCards = ref([])
-  const loading = ref(false)
-  const error = ref(null)
-  const loaded = ref(false)
+  // Local-first storage: IndexedDB + the storage adapter (src/lib/storage).
+  const col = createCollection({ table: 'credit_cards', cacheKey: 'creditCards', orderBy: [['name', 'asc']] })
 
-  async function fetchCreditCards(force = false) {
-    if (loaded.value && !force) return creditCards.value
-
-    if (!loaded.value) {
-      const cached = await idbGet('creditCards')
-      if (cached.length) {
-        creditCards.value = cached
-        loaded.value = true
-      }
-    }
-
-    if (!navigator.onLine) { loading.value = false; return creditCards.value }
-
-    loading.value = !loaded.value
-    const { data, error: err } = await supabase.from('credit_cards').select('*').order('name')
-    if (err) {
-      if (!loaded.value) error.value = err.message
-    } else {
-      creditCards.value = data || []
-      loaded.value = true
-      idbSet('creditCards', creditCards.value)
-    }
-    loading.value = false
-    return creditCards.value
+  function fetchCreditCards(force = false) {
+    return col.fetch(force)
   }
 
-  async function addCreditCard(payload) {
-    const normalized = normalizeCard(payload)
-
-    const { data, error: err } = await supabase.from('credit_cards').insert(normalized).select().single()
-    if (err) {
-      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-      const localEntry = { ...normalized, id: tempId }
-      creditCards.value.push(localEntry)
-      loaded.value = true
-      idbSet('creditCards', creditCards.value)
-      useSyncStore().enqueue({ table: 'credit_cards', action: 'insert', payload: normalized })
-      return localEntry
-    }
-
-    creditCards.value.push(data)
-    loaded.value = true
-    idbSet('creditCards', creditCards.value)
-    return data
+  function addCreditCard(payload) {
+    return col.insert(normalizeCard(payload))
   }
 
-  async function updateCreditCard(id, payload) {
-    const normalized = normalizeCard(payload)
-    const index = creditCards.value.findIndex(card => card.id === id)
-
-    if (index !== -1) creditCards.value[index] = { ...creditCards.value[index], ...normalized }
-    idbSet('creditCards', creditCards.value)
-
-    const { data, error: err } = await supabase.from('credit_cards').update(normalized).eq('id', id).select().single()
-    if (err) {
-      useSyncStore().enqueue({ table: 'credit_cards', action: 'update', recordId: id, payload: normalized })
-      return creditCards.value[index]
-    }
-
-    if (index !== -1) creditCards.value[index] = data
-    idbSet('creditCards', creditCards.value)
-    return data
+  function updateCreditCard(id, payload) {
+    return col.update(id, normalizeCard(payload))
   }
 
-  async function deleteCreditCard(id) {
-    creditCards.value = creditCards.value.filter(card => card.id !== id)
-    idbSet('creditCards', creditCards.value)
-
-    const { error: err } = await supabase.from('credit_cards').delete().eq('id', id)
-    if (err && !String(id).startsWith('temp_')) {
-      useSyncStore().enqueue({ table: 'credit_cards', action: 'delete', recordId: id })
-    }
+  function deleteCreditCard(id) {
+    return col.remove(id)
   }
 
-  function $reset() {
-    creditCards.value = []
-    loading.value = false
-    error.value = null
-    loaded.value = false
+  return {
+    creditCards: col.items,
+    loading: col.loading,
+    error: col.error,
+    loaded: col.loaded,
+    fetchCreditCards,
+    addCreditCard,
+    updateCreditCard,
+    deleteCreditCard,
+    $reset: col.reset,
   }
-
-  return { creditCards, loading, error, loaded, fetchCreditCards, addCreditCard, updateCreditCard, deleteCreditCard, $reset }
 })

@@ -2,6 +2,26 @@
 
 This repo gets updated when i make changes to the personal version. This will keep getting updated as and when needed
 
+### V3.1.0 (25/10/2026)
+**New: storage adapters**
+- All reading and writing of data now goes through one small storage interface, with Supabase as the built-in adapter. Nothing changes if you use Supabase; it makes it possible to keep your data somewhere else.
+- [docs/ADAPTERS.md](docs/ADAPTERS.md) is the full specification for writing an adapter (written so you can hand it to an AI as-is), and `npm run test:adapter` checks one against it.
+- Without an adapter that has sign-in, the app uses one local user per browser.
+
+**Fixed: offline changes that didn't sync**
+- Rows created offline now get their permanent id on the device. Before, editing or deleting something before it synced, or adding a transaction to an account (or an expense to a card) created offline, never reached the server.
+- Credit cards, card expenses, categories, labels, subscriptions and currencies now save offline straight away instead of trying the network first.
+- Labels on things created offline, label edits made offline, paying a card bill offline, and deleting a labelled transaction offline now all sync.
+- A retried save can no longer create a duplicate.
+
+**Fixed: older transactions could disappear past 1,000 rows**
+- Supabase returns at most 1,000 rows per request. Full-history reads now page through every row, and a failed read no longer replaces the offline copy with a partial list.
+
+**Changed**
+- Month Summary and the Month Report work fully offline.
+- Exchange rates are kept on the device for a day, so conversions work offline after the first fetch.
+- The offline test now also checks rows created, linked, edited and deleted offline.
+
 ### V3.0.1 (25/10/2026)
 Catches the public version up with six months of changes to the personal version.
 

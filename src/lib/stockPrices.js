@@ -1,7 +1,9 @@
-import { supabase } from './supabase'
+import { getAdapter } from './storage'
 
-// Live stock prices via the `stock-quote` Supabase edge function (Yahoo Finance)
-// with a shared, day-granular cache table (`stock_price_cache`). Mirrors the
+// Live stock prices through the storage adapter's optional `quotes` capability
+// (Supabase: the stock-quote edge function + the shared stock_price_cache
+// table). Adapters without it have no live prices; values can be entered by
+// hand. Mirrors the
 // exchange-rate cache pattern: read cache first, only hit the network when the
 // cached quote isn't from today. All helpers swallow errors and return null so
 // an offline / failed fetch never breaks the caller.
@@ -36,9 +38,9 @@ export async function fetchQuote(rawSymbol) {
   if (!symbol) return null
   if (typeof navigator !== 'undefined' && !navigator.onLine) return null
   try {
-    const { data, error } = await supabase.functions.invoke('stock-quote', { body: { symbol } })
-    if (error || !data || data.price == null) return null
-    return { symbol, price: Number(data.price), currency: data.currency || 'INR' }
+    const quote = await getAdapter().quotes?.fetch(symbol)
+    if (!quote || quote.price == null) return null
+    return { symbol, price: Number(quote.price), currency: quote.currency || 'INR' }
   } catch {
     return null
   }
@@ -48,8 +50,7 @@ export async function getCachedPrice(rawSymbol) {
   const symbol = yahooSymbol(rawSymbol)
   if (!symbol) return null
   try {
-    const { data } = await supabase.from('stock_price_cache').select('*').eq('symbol', symbol).maybeSingle()
-    return data || null
+    return (await getAdapter().quotes?.getCached(symbol)) || null
   } catch {
     return null
   }
@@ -59,9 +60,7 @@ export async function upsertCachedPrice(rawSymbol, price, currency) {
   const symbol = yahooSymbol(rawSymbol)
   if (!symbol) return
   try {
-    await supabase
-      .from('stock_price_cache')
-      .upsert({ symbol, price, currency, fetched_at: new Date().toISOString() }, { onConflict: 'symbol' })
+    await getAdapter().quotes?.putCached(symbol, price, currency)
   } catch { /* cache write is best-effort */ }
 }
 

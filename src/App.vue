@@ -5,7 +5,7 @@ import { useCurrenciesStore } from './stores/currencies'
 import { useCurrencyStore } from './stores/currency'
 import { useBiometricLock } from './composables/useBiometricLock'
 import { serviceDegraded } from './composables/useServiceStatus'
-import { pingBackend } from './lib/supabase'
+import { getAdapter } from './lib/storage'
 import LockScreen from './components/shared/LockScreen.vue'
 import ServiceBanner from './components/shared/ServiceBanner.vue'
 
@@ -21,7 +21,7 @@ const { isLocked, initLock } = useBiometricLock()
 let recoveryTimer = null
 watch(serviceDegraded, (degraded) => {
   if (degraded && !recoveryTimer) {
-    recoveryTimer = setInterval(() => { pingBackend() }, 20000)
+    recoveryTimer = setInterval(() => { getAdapter().health?.() }, 20000)
   } else if (!degraded && recoveryTimer) {
     clearInterval(recoveryTimer)
     recoveryTimer = null

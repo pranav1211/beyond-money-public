@@ -1,4 +1,4 @@
-export const APP_VERSION = '3.0.1';
+export const APP_VERSION = '3.1.0';
 
 // Build ID is injected at compile time by Vite (see vite.config.js).
 // The display version above is what the user sees; this string changes

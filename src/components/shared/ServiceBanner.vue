@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useServiceStatus } from '../../composables/useServiceStatus'
-import { pingBackend } from '../../lib/supabase'
+import { getAdapter } from '../../lib/storage'
 
 const { serviceDegraded } = useServiceStatus()
 const checking = ref(false)
@@ -11,7 +11,7 @@ async function retry() {
   checking.value = true
   // A successful ping reports through the fetch wrapper, which clears
   // serviceDegraded and hides the banner. No need to inspect the result.
-  await pingBackend()
+  await getAdapter().health?.()
   checking.value = false
 }
 </script>

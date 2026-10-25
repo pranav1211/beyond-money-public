@@ -41,11 +41,8 @@ const ratesStale = computed(() => {
 })
 
 async function hardRefresh() {
-  try {
-    const codes = currenciesStore.codes.length ? currenciesStore.codes : ['INR', 'USD']
-    const { supabase } = await import('../lib/supabase')
-    await supabase.from('exchange_rate_cache').delete().eq('from_currency', 'USD').in('to_currency', codes)
-  } catch {}
+  const codes = currenciesStore.codes.length ? currenciesStore.codes : ['INR', 'USD']
+  await currencyStore.clearCachedRates(codes)
   await refresh()
 }
 

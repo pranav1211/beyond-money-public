@@ -1,63 +1,26 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
-import { idbGet, idbSet } from '../lib/idb'
-import { useSyncStore } from './sync'
+import { createCollection } from '../lib/storage/collection'
+import { getAdapter } from '../lib/storage'
+
+function normalizeCategory(payload) {
+  return {
+    ...payload,
+    name: payload.name?.trim(),
+    icon: payload.icon?.trim() || null,
+  }
+}
 
 export const useCategoriesStore = defineStore('categories', () => {
-  const categories = ref([])
-  const loading = ref(false)
-  const error = ref(null)
-  const loaded = ref(false)
+  // Local-first storage: IndexedDB + the storage adapter (src/lib/storage).
+  const col = createCollection({ table: 'categories', cacheKey: 'categories', orderBy: [['type', 'asc'], ['name', 'asc']] })
+  const categories = col.items
 
-  async function fetchCategories(force = false) {
-    if (loaded.value && !force) return categories.value
-
-    if (!loaded.value) {
-      const cached = await idbGet('categories')
-      if (cached.length) {
-        categories.value = cached
-        loaded.value = true
-      }
-    }
-
-    if (!navigator.onLine) { loading.value = false; return categories.value }
-
-    loading.value = !loaded.value
-    const { data, error: err } = await supabase.from('categories').select('*').order('type').order('name')
-    if (err) {
-      if (!loaded.value) error.value = err.message
-    } else {
-      categories.value = data || []
-      loaded.value = true
-      idbSet('categories', categories.value)
-    }
-    loading.value = false
-    return categories.value
+  function fetchCategories(force = false) {
+    return col.fetch(force)
   }
 
-  async function addCategory(payload) {
-    const normalized = {
-      ...payload,
-      name: payload.name?.trim(),
-      icon: payload.icon?.trim() || null,
-    }
-
-    const { data, error: err } = await supabase.from('categories').insert(normalized).select().single()
-    if (err) {
-      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-      const localEntry = { ...normalized, id: tempId }
-      categories.value.push(localEntry)
-      loaded.value = true
-      idbSet('categories', categories.value)
-      useSyncStore().enqueue({ table: 'categories', action: 'insert', payload: normalized })
-      return localEntry
-    }
-
-    categories.value.push(data)
-    loaded.value = true
-    idbSet('categories', categories.value)
-    return data
+  function addCategory(payload) {
+    return col.insert(normalizeCategory(payload))
   }
 
   // Find a category by (name, type) case-insensitively, creating it if missing.
@@ -73,45 +36,21 @@ export const useCategoriesStore = defineStore('categories', () => {
     return addCategory({ user_id: userId, name, type, color: color || '#6366f1', icon: icon || null })
   }
 
-  async function updateCategory(id, payload) {
-    const normalized = {
-      ...payload,
-      name: payload.name?.trim(),
-      icon: payload.icon?.trim() || null,
-    }
-    const index = categories.value.findIndex(category => category.id === id)
-
-    if (index !== -1) categories.value[index] = { ...categories.value[index], ...normalized }
-    idbSet('categories', categories.value)
-
-    const { data, error: err } = await supabase.from('categories').update(normalized).eq('id', id).select().single()
-    if (err) {
-      useSyncStore().enqueue({ table: 'categories', action: 'update', recordId: id, payload: normalized })
-      return categories.value[index]
-    }
-
-    if (index !== -1) categories.value[index] = data
-    idbSet('categories', categories.value)
-    return data
+  function updateCategory(id, payload) {
+    return col.update(id, normalizeCategory(payload))
   }
 
-  async function deleteCategory(id) {
-    categories.value = categories.value.filter(category => category.id !== id)
-    idbSet('categories', categories.value)
-
-    const { error: err } = await supabase.from('categories').delete().eq('id', id)
-    if (err && !String(id).startsWith('temp_')) {
-      useSyncStore().enqueue({ table: 'categories', action: 'delete', recordId: id })
-    }
+  function deleteCategory(id) {
+    return col.remove(id)
   }
 
+  // First sign-in: give a new user a starter set. Online only, and only when the
+  // backend has no categories for them yet.
   async function seedDefaultCategories(userId) {
-    const { count, error: countError } = await supabase
-      .from('categories')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-
-    if (countError || count > 0) return
+    if (!userId || !navigator.onLine) return
+    let existing
+    try { existing = await getAdapter().list('categories') } catch { return }
+    if (existing.length) return
 
     const defaults = [
       { user_id: userId, name: 'Salary', type: 'income', color: '#2f9e44', icon: 'salary' },
@@ -131,16 +70,20 @@ export const useCategoriesStore = defineStore('categories', () => {
       { user_id: userId, name: 'Realized Loss', type: 'expense', color: '#e03131', icon: 'investment' },
     ]
 
-    await supabase.from('categories').insert(defaults)
-    loaded.value = false
+    await Promise.all(defaults.map(row => col.insert(row)))
   }
 
-  function $reset() {
-    categories.value = []
-    loading.value = false
-    error.value = null
-    loaded.value = false
+  return {
+    categories,
+    loading: col.loading,
+    error: col.error,
+    loaded: col.loaded,
+    fetchCategories,
+    addCategory,
+    ensureCategory,
+    updateCategory,
+    deleteCategory,
+    seedDefaultCategories,
+    $reset: col.reset,
   }
-
-  return { categories, loading, error, loaded, fetchCategories, addCategory, ensureCategory, updateCategory, deleteCategory, seedDefaultCategories, $reset }
 })

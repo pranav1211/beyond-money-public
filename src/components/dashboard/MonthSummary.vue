@@ -6,7 +6,6 @@ import { useCurrenciesStore } from '../../stores/currencies'
 import { useCategoriesStore } from '../../stores/categories'
 import { inDefault, formatDefault } from '../../lib/money'
 import { isInvestmentTxn } from '../../lib/investment'
-import { supabase } from '../../lib/supabase'
 import { useToday } from '../../composables/useToday'
 import CandleLoader from '../shared/CandleLoader.vue'
 
@@ -15,7 +14,6 @@ const currencyStore = useCurrencyStore()
 const currenciesStore = useCurrenciesStore()
 const categoriesStore = useCategoriesStore()
 const loading = ref(true)
-const prevTxns = ref([])
 
 // Local month, reactive: flips at local midnight (was UTC → lagged to 05:30
 // IST) and while the app stays open across the month boundary.
@@ -46,28 +44,17 @@ function inCurrentMonth(t) {
   return t.date >= currentRange.value.start && t.date < currentRange.value.end
 }
 
-// Last month's totals only feed the "vs last month" delta, so this is a
-// network-only enhancement: skipped offline and never awaited by first paint.
-async function fetchPrevMonth() {
-  if (!navigator.onLine) return
-  try {
-    const { start, end } = monthRange(prevMonth.value)
-    const { data } = await supabase
-      .from('transactions')
-      .select('type, amount, amount_default, default_currency')
-      .gte('date', start)
-      .lt('date', end)
-    prevTxns.value = data || []
-  } catch {
-    // Keep the summary; the delta just stays hidden.
-  }
-}
+// Last month's rows, for the "vs last month" delta. The store holds the full
+// history, so this is computed locally: no extra request, and it works offline.
+const prevTxns = computed(() => {
+  const { start, end } = monthRange(prevMonth.value)
+  return transactionsStore.transactions.filter(t => t.date >= start && t.date < end)
+})
 
 onMounted(async () => {
   // Render from cached data as soon as it's in the store (see the template's
-  // v-if): the summary must never wait on a Supabase round-trip, which can
-  // stall indefinitely on an offline launch.
-  fetchPrevMonth()
+  // v-if): the summary must never wait on a network round-trip, which can
+  // stall indefinitely on an offline launch (INV-62).
   try {
     await Promise.all([
       transactionsStore.fetchTransactions({ month: currentMonth.value }),
@@ -80,10 +67,10 @@ onMounted(async () => {
   currencyStore.fetchRate(currenciesStore.codes.length ? currenciesStore.codes : ['INR', 'USD'])
 })
 
-// New month while the dashboard is open → pull the new month + comparison.
+// New month while the dashboard is open → refresh (the totals recompute from
+// currentMonth on their own).
 watch(currentMonth, (month) => {
   transactionsStore.fetchTransactions({ month })
-  fetchPrevMonth()
 })
 
 const incomeTxns = computed(() => transactionsStore.transactions.filter(t => t.type === 'income' && inCurrentMonth(t)))

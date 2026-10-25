@@ -1,4 +1,4 @@
-# Beyond Money — V 3.0.1
+# Beyond Money — V 3.1.0
 
 Personal finance tracker to track income, expenses, credit cards, loans, assets, subscriptions, and net worth — all in one place.
 Beyond Money is designed around simplicity and control. Every major feature flows naturally from a central dashboard, letting you monitor, record, and analyze your finances without friction.
@@ -38,7 +38,7 @@ The creators and contributors of Beyond Money are not responsible for any financ
 |-------|------|
 | Frontend | Vue 3, Pinia, Vue Router, Vite |
 | Charts | Chart.js + vue-chartjs, hand-drawn SVG |
-| Backend / DB | Supabase (Postgres + Auth + RLS) |
+| Backend / DB | Supabase (Postgres + Auth + RLS) by default; swappable via [storage adapters](#storage) |
 | Auth | Google OAuth via Supabase |
 | Offline | IndexedDB + Service Worker (whole app pre-cached) |
 | Currency | Open Exchange Rates API |
@@ -102,7 +102,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_EXCHANGE_RATES_APP_ID=your-openexchangerates-app-id
 ```
 
-Optional: `VITE_APP_BASE=/some/path/` if you serve the app from a sub-path.
+Optional: `VITE_APP_BASE=/some/path/` if you serve the app from a sub-path, and `VITE_STORAGE=<name>` to use a different [storage adapter](#storage) (default `supabase`).
 
 ### Step 6 (optional) — Live stock prices
 
@@ -132,15 +132,20 @@ beyond-money-public/
 │   ├── views/            # Page-level components
 │   ├── stores/           # Pinia stores (IndexedDB-first, with an offline sync queue)
 │   ├── router/           # Vue Router config (routes are code-split)
-│   ├── lib/              # Supabase client, IndexedDB, money, loans, dates
+│   ├── lib/
+│   │   ├── storage/      # Storage socket: adapter interface, Supabase adapter, local-first collections
+│   │   └── …             # IndexedDB, money, loans, dates
 │   └── version.js        # App version
 ├── supabase/
 │   ├── schema/
 │   │   └── schema.sql    # Complete database schema (re-runnable)
 │   └── functions/
 │       └── stock-quote/  # Optional edge function for live stock prices
+├── docs/
+│   └── ADAPTERS.md       # How to write a storage adapter
 ├── test/
-│   └── offline-e2e.mjs   # Offline end-to-end test (headless Chrome)
+│   ├── offline-e2e.mjs   # Offline end-to-end test (headless Chrome)
+│   └── adapter/          # Storage adapter contract test + in-memory reference adapter
 ├── public/               # Static assets, logo, PWA manifest, service worker
 └── vite.config.js        # Also injects the build ID + pre-cache list into the service worker
 ```
@@ -189,9 +194,22 @@ exchange_rate_cache, stock_price_cache (shared)
 npm run build         # Production build → dist/
 npm run preview       # Preview the build locally
 npm run test:offline  # Offline end-to-end test (run after a build)
+npm run test:adapter  # Storage adapter contract test (no build needed)
 ```
 
-The offline test opens the built app in headless Chrome, goes offline, adds a transaction and checks it is saved and queued for sync. It looks for Chrome in the usual places; point it elsewhere with `CHROME_BIN=/path/to/chrome`.
+The offline test opens the built app in headless Chrome and goes offline. It adds a transaction through the form, then creates an account, a card and a label, adds, edits and deletes transactions and card expenses against them, and finally replays the sync queue to check everything would reach storage correctly. It looks for Chrome in the usual places; point it elsewhere with `CHROME_BIN=/path/to/chrome`.
+
+## Storage
+
+The app keeps your data on the device (IndexedDB) and syncs it to a backend through one small interface, the **storage adapter**. Supabase is the built-in adapter, and the setup steps above are all you need for it.
+
+To keep your data somewhere else (your own server, Firebase, PocketBase, a file in cloud storage, …) you can write an adapter for it: one file in `src/lib/storage/adapters/` with seven methods. The app already handles offline use, the sync queue, retries, ids and all calculations, so an adapter only stores rows and returns them.
+
+- [`docs/ADAPTERS.md`](docs/ADAPTERS.md) is the complete specification: the interface, the rules an adapter must follow, the data model, optional extras (sign-in, shared exchange rates, stock prices) and which kinds of storage fit. It's written so you can hand it to an AI assistant as-is.
+- `npm run test:adapter` checks an adapter against it: `ADAPTER=src/lib/storage/adapters/<name>.js npm run test:adapter`.
+- Select it with `VITE_STORAGE=<name>` in `.env`.
+
+Only the Supabase adapter is maintained here. Without an adapter that provides sign-in, the app uses a single local user per browser.
 
 ## Preview
 

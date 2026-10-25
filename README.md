@@ -53,11 +53,13 @@ View the changelog here : [Changelog](https://github.com/pranav1211/beyond-money
 
 ## Getting Started
 
+These steps set up the app with **Supabase**, the built-in [storage adapter](#storage). Supabase isn't required: to keep your data somewhere else, write an adapter for your storage ([`docs/ADAPTERS.md`](docs/ADAPTERS.md)), set `VITE_STORAGE` in `.env`, and skip the Supabase-specific steps (2, 3, 4 and 6).
+
 ### Prerequisites
 
 - Node.js 18+
-- A free [Supabase](https://supabase.com) account
-- A Google Cloud project (for OAuth)
+- A free [Supabase](https://supabase.com) account (for the default Supabase adapter)
+- A Google Cloud project (for Google sign-in through Supabase)
 - An [Open Exchange Rates](https://openexchangerates.org) account (free tier)
 
 ### Step 1 — Clone and install

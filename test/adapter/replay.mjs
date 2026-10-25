@@ -6,7 +6,7 @@
 // is lost, the queue retries it. So every scenario is also replayed with each
 // op sent twice, and must end in exactly the same state.
 
-export function replayTests({ executeOp, createAdapter, newId }) {
+export function replayTests({ executeOp, drainOps, createAdapter, newId }) {
   const uid = newId()
 
   // An offline session that builds on itself: rows created offline are
@@ -107,6 +107,41 @@ export function replayTests({ executeOp, createAdapter, newId }) {
       }
       await executeOp(spy, { table: 'cc_expenses', action: 'update_batch', payload: { ids: ['temp_x'], update: { is_paid: true } } })
       t.deepEqual(calls, [], 'the adapter is never called for them')
+    }],
+
+    ['a failed write holds back later writes to the same row (queue drain)', async (t) => {
+      const adapter = createAdapter()
+      const acc = newId(), other = newId()
+      await adapter.insert('accounts', { id: acc, user_id: uid, name: 'A', type: 'cash', current_balance: 1000 })
+      await adapter.insert('accounts', { id: other, user_id: uid, name: 'B', type: 'cash', current_balance: 0 })
+      let queue = [
+        { qid: 1, table: 'accounts', action: 'update', recordId: acc, payload: { current_balance: 900 } },
+        { qid: 2, table: 'accounts', action: 'update', recordId: other, payload: { current_balance: 5 } },
+        { qid: 3, table: 'accounts', action: 'update', recordId: acc, payload: { current_balance: 850 } },
+      ]
+      // The first write to `acc` fails (both attempts) during the first drain.
+      let outage = true
+      const execute = (op) => {
+        if (outage && op.qid === 1) throw new Error('backend hiccup')
+        return executeOp(adapter, op)
+      }
+      const drain = () => drainOps(queue, {
+        execute,
+        done: (op) => { queue = queue.filter(q => q.qid !== op.qid) },
+        failed: () => {},
+      })
+      const bal = async (id) => (await adapter.list('accounts')).find(r => r.id === id).current_balance
+
+      const failed = await drain()
+      t.ok(failed, 'drain reports the failure')
+      t.equal(await bal(acc), 1000, 'the newer write to the same row was held back')
+      t.equal(await bal(other), 5, 'writes to other rows went through')
+      t.deepEqual(queue.map(q => q.qid), [1, 3], 'failed and held writes stay queued, in order')
+
+      outage = false
+      t.ok(!(await drain()), 'next drain succeeds')
+      t.equal(await bal(acc), 850, 'the row ends at its latest value, not the older retried one')
+      t.deepEqual(queue, [], 'queue is empty')
     }],
 
     ['an unknown action throws (so the queue marks it failed)', async (t) => {

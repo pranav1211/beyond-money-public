@@ -57,6 +57,45 @@ export async function executeOp(adapter, op) {
   }
 }
 
+// The rows an op writes, as 'table:id' keys.
+export function recordKeys(op) {
+  if (op.action === 'update_batch') return (op.payload?.ids || []).map(id => `${op.table}:${id}`)
+  const id = op.recordId ?? op.payload?.id
+  return id ? [`${op.table}:${id}`] : []
+}
+
+// Replays queued ops in order. Each op gets one immediate retry (the first
+// failure may have refreshed an expired token). Once an op fails, later ops on
+// the same row are held back for this run: letting update #2 land before
+// update #1 would have #1's retry overwrite the newer value (e.g. an account
+// balance). Held ops stay queued, untouched, for the next run.
+//   execute(op)        runs one op (throws on failure)
+//   done(op)           it succeeded: remove it from the queue
+//   failed(op, error)  it failed twice: record the failure
+// Returns true if anything failed.
+export async function drainOps(ops, { execute, done, failed }) {
+  const blocked = new Set()
+  let hadFailure = false
+  for (const op of ops) {
+    const keys = recordKeys(op)
+    if (keys.some(k => blocked.has(k))) continue
+    try {
+      await execute(op)
+      await done(op)
+    } catch {
+      try {
+        await execute(op)
+        await done(op)
+      } catch (err) {
+        hadFailure = true
+        keys.forEach(k => blocked.add(k))
+        await failed(op, err)
+      }
+    }
+  }
+  return hadFailure
+}
+
 async function setLabels(adapter, table, parentId, labels) {
   const link = LABEL_LINKS[table]
   if (!link || !parentId || !Array.isArray(labels)) return

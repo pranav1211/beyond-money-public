@@ -98,6 +98,7 @@ export const useCcExpensesStore = defineStore('ccExpenses', () => {
     deleteExpense,
     archiveForCard,
     clearForCard,
+    unlinkLabel: col.unlinkEverywhere,
     $reset: col.reset,
   }
 })

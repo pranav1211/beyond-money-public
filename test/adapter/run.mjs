@@ -59,7 +59,7 @@ async function runAll(title, tests) {
 }
 
 try {
-  const { executeOp } = await load('/src/lib/storage/ops.js')
+  const { executeOp, drainOps } = await load('/src/lib/storage/ops.js')
   const { newId } = await load('/src/lib/storage/ids.js')
   const { default: createMemoryAdapter } = await load('/test/adapter/memory.js')
   const { contractTests } = await import('./contract.mjs')
@@ -78,7 +78,7 @@ try {
   } finally {
     await contract.cleanup()
   }
-  await runAll('App write path: offline session replay (memory adapter)', replayTests({ executeOp, createAdapter: createMemoryAdapter, newId }))
+  await runAll('App write path: offline session replay (memory adapter)', replayTests({ executeOp, drainOps, createAdapter: createMemoryAdapter, newId }))
 } catch (e) {
   failures++
   console.error(`\n\x1b[31mCould not run: ${e?.stack || e}\x1b[0m`)

@@ -13,6 +13,10 @@ This repo gets updated when i make changes to the personal version. This will ke
 - Credit cards, card expenses, categories, labels, subscriptions and currencies now save offline straight away instead of trying the network first.
 - Labels on things created offline, label edits made offline, paying a card bill offline, and deleting a labelled transaction offline now all sync.
 - A retried save can no longer create a duplicate.
+- If one change fails to sync, later changes to the same item wait for it, instead of syncing first and then being overwritten by the older change when it retries.
+- Deleting a label that's still in use works: it's taken off its transactions and card expenses first.
+- Deleting the last item in a list (for example your only subscription) now sticks instead of reappearing after reopening the app offline.
+- Something you add while the page refreshes in the background can no longer disappear until the next refresh.
 
 **Fixed: older transactions could disappear past 1,000 rows**
 - Supabase returns at most 1,000 rows per request. Full-history reads now page through every row, and a failed read no longer replaces the offline copy with a partial list.

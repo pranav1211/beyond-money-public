@@ -28,11 +28,12 @@ function openDB() {
   return dbPromise
 }
 
+// null when the value can't be serialised (circular ref, BigInt).
 function cloneForIDB(items) {
   try {
     return JSON.parse(JSON.stringify(items))
   } catch {
-    return []
+    return null
   }
 }
 
@@ -53,8 +54,13 @@ export async function idbGet(storeName) {
 
 export async function idbSet(storeName, items) {
   try {
+    // An empty list clears the store (deleting the last row must stick).
+    // Callers only pass the complete current list: collections hydrate from
+    // IndexedDB before writing, and adapter.list() throws rather than return a
+    // partial/empty result on failure.
     const clean = cloneForIDB(items)
-    if (!clean.length) return
+    // A list that failed to serialise must never become "clear the store".
+    if (!Array.isArray(clean)) return
     const db = await openDB()
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, 'readwrite')

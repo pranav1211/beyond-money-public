@@ -175,7 +175,7 @@ try {
     const app = document.querySelector('#app').__vue_app__
     const { $router: router, $pinia: pinia } = app.config.globalProperties
     // Visit the pages so their stores exist (client-side, same Pinia).
-    for (const path of ['/credit-cards', '/organize', '/transactions']) {
+    for (const path of ['/credit-cards', '/organize', '/subscriptions', '/transactions']) {
       await router.push(path)
       await new Promise(r => setTimeout(r, 600))
     }
@@ -184,22 +184,30 @@ try {
     const acc = await s('accounts').addAccount({ user_id, name: 'Offline Bank', type: 'savings', currency: 'INR', current_balance: 500, is_active: true })
     const card = await s('creditCards').addCreditCard({ user_id, name: 'Offline Card', credit_limit: 9000 })
     const label = await s('labels').addLabel({ user_id, name: 'Offline Label', color: '#ff0000' })
+    const doomed = await s('labels').addLabel({ user_id, name: 'Doomed Label', color: '#000000' })
     const base = { user_id, type: 'expense', currency: 'INR', default_currency: 'INR', amount_default: 0, category_id: 'cat1', date: '2026-10-20' }
     const tx = await s('transactions').addTransaction({ ...base, amount: 50, account_id: acc.id, description: 'keep', labels: [label.id] })
     const gone = await s('transactions').addTransaction({ ...base, amount: 7, account_id: acc.id, description: 'gone', labels: [label.id] })
     await s('transactions').updateTransaction(tx.id, { ...base, amount: 80, account_id: acc.id, description: 'keep (edited)', labels: [] })
     await s('transactions').deleteTransaction(gone.id)
-    const exp = await s('ccExpenses').addExpense({ user_id, credit_card_id: card.id, amount: 300, description: 'keep', labels: [label.id] })
+    const exp = await s('ccExpenses').addExpense({ user_id, credit_card_id: card.id, amount: 300, description: 'keep', labels: [label.id, doomed.id] })
     const exp2 = await s('ccExpenses').addExpense({ user_id, credit_card_id: card.id, amount: 9, description: 'gone' })
     await s('ccExpenses').updateExpense(exp.id, { amount: 320, description: 'keep (edited)' })
     await s('ccExpenses').deleteExpense(exp2.id)
+    // Deleting a label in use takes it off its rows first.
+    await s('labels').deleteLabel(doomed.id)
+    const localExpLabels = s('ccExpenses').expenses.find(e => e.id === exp.id)?.cc_expense_labels?.map(l => l.label_id)
+    // Deleting the only row of a table must clear it in IndexedDB (INV-26).
+    const sub = await s('subscriptions').addSubscription({ user_id, service_name: 'Only one', amount: 1, billing_cycle: 'monthly', category: 'other' })
+    await s('subscriptions').deleteSubscription(sub.id)
 
     const db = await new Promise((res, rej) => { const r = indexedDB.open('beyond-money'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
     const getAll = (store) => new Promise((res) => { const r = db.transaction(store, 'readonly').objectStore(store).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res([]) })
     const queue = await getAll('syncQueue')
     const localAccount = (await getAll('accounts')).find(a => a.id === acc.id)
+    const cachedSubs = (await getAll('subscriptions')).length
     db.close()
-    return { ids: { acc: acc.id, card: card.id, label: label.id, tx: tx.id, gone: gone.id, exp: exp.id, exp2: exp2.id }, queue, localBalance: localAccount?.current_balance }
+    return { ids: { acc: acc.id, card: card.id, label: label.id, doomed: doomed.id, tx: tx.id, gone: gone.id, exp: exp.id, exp2: exp2.id }, queue, localBalance: localAccount?.current_balance, localExpLabels, cachedSubs }
   }).catch(e => ({ err: e.message }))
 
   // 7) "Reconnect": replay the real queue, in order, through the app's
@@ -235,6 +243,13 @@ try {
       check((await one('cc_expenses', ids.exp))?.amount === 320, 'expense edit made offline synced')
       check((await rows('cc_expense_labels')).some(l => l.cc_expense_id === ids.exp && l.label_id === ids.label), 'expense kept its label (edit without labels)')
       check(!(await one('cc_expenses', ids.exp2)), 'expense deleted offline is gone')
+      check(JSON.stringify(session.localExpLabels) === JSON.stringify([ids.label]), 'deleting a label in use removed it from the expense on the device')
+      check(!(await one('labels', ids.doomed)), 'deleted label is gone')
+      check(session.cachedSubs === 0, `deleting the last row clears it from IndexedDB (cached: ${session.cachedSubs})`)
+      check(!(await rows('cc_expense_labels')).some(l => l.label_id === ids.doomed), 'no link rows point at the deleted label')
+      const unlinkAt = queue.findIndex(q => q.action === 'set_links' && q.recordId === ids.exp)
+      const deleteAt = queue.findIndex(q => q.action === 'delete' && q.table === 'labels' && q.recordId === ids.doomed)
+      check(unlinkAt !== -1 && unlinkAt < deleteAt, 'the unlink is queued before the label delete')
       check((await one('accounts', ids.acc))?.current_balance === 500 - 80, 'account balance after replay matches the device')
       check(!(await rows('transactions')).some(r => 'categories' in r || 'accounts' in r || 'transaction_labels' in r), 'no app-only fields were sent to storage')
     } finally {

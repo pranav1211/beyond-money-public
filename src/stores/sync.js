@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getAdapter } from '../lib/storage'
-import { executeOp } from '../lib/storage/ops'
+import { executeOp, drainOps } from '../lib/storage/ops'
 import {
   syncQueueAdd,
   syncQueueGetAll,
@@ -97,29 +97,20 @@ export const useSyncStore = defineStore('sync', () => {
     // Refresh auth session before syncing — expired tokens cause first operation to fail
     try { await getAdapter().auth?.getSession?.() } catch {}
 
+    // In order, with later writes to a failed row held back (drainOps).
     const items = await syncQueueGetAll()
-    let hadFailure = false
-
-    for (const item of items) {
-      try {
-        await executeOperation(item)
-        await syncQueueRemove(item.id)
-      } catch (err) {
-        // Retry once — the first failure may have triggered a token refresh
-        try {
-          await executeOperation(item)
-          await syncQueueRemove(item.id)
-        } catch (retryErr) {
-          hadFailure = true
-          const newRetries = (item.retries || 0) + 1
-          if (newRetries >= MAX_RETRIES) {
-            await syncQueueUpdate(item.id, { retries: newRetries, lastError: retryErr.message, failed: true })
-          } else {
-            await syncQueueUpdate(item.id, { retries: newRetries, lastError: retryErr.message })
-          }
-        }
-      }
-    }
+    const hadFailure = await drainOps(items, {
+      execute: executeOperation,
+      done: item => syncQueueRemove(item.id),
+      failed: async (item, err) => {
+        const newRetries = (item.retries || 0) + 1
+        await syncQueueUpdate(item.id, {
+          retries: newRetries,
+          lastError: err?.message || String(err),
+          ...(newRetries >= MAX_RETRIES ? { failed: true } : {}),
+        })
+      },
+    })
 
     const now = Date.now()
     await syncMetaSet('lastSyncTime', now)

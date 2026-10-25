@@ -48,8 +48,25 @@ export function createCollection({ table, cacheKey, orderBy = [], labels = false
   }
 
   const indexOf = id => items.value.findIndex(r => r.id === id)
+  const inFlight = new Set() // ids of inserts being sent right now
+
+  // Whether `items` holds at least the IndexedDB copy. persist() rewrites the
+  // whole IndexedDB store, so writing before that would wipe the cache (a
+  // delete from a page that never loaded this store would persist []).
+  let hydrated = false
+
+  async function hydrateLocal() {
+    if (hydrated) return
+    const cached = await idbGet(cacheKey)
+    if (!hydrated) {
+      const have = new Set(items.value.map(r => r.id))
+      items.value = [...items.value, ...cached.filter(r => !have.has(r.id))]
+      hydrated = true
+    }
+  }
 
   async function persist() {
+    if (!hydrated) return
     await idbSet(cacheKey, items.value)
   }
 
@@ -71,11 +88,8 @@ export function createCollection({ table, cacheKey, orderBy = [], labels = false
     if (loaded.value && !force) return items.value
 
     if (!loaded.value) {
-      const cached = await idbGet(cacheKey)
-      if (cached.length) {
-        items.value = cached
-        loaded.value = true
-      }
+      await hydrateLocal()
+      if (items.value.length) loaded.value = true
     }
 
     if (!navigator.onLine) {
@@ -107,6 +121,7 @@ export function createCollection({ table, cacheKey, orderBy = [], labels = false
       result = await keepUnsynced(result)
       items.value = result
       loaded.value = true
+      hydrated = true
       error.value = null
       await persist()
     } catch (e) {
@@ -116,14 +131,16 @@ export function createCollection({ table, cacheKey, orderBy = [], labels = false
     return items.value
   }
 
-  // Safety net: if an insert is still queued (the flush above failed), keep
-  // that local row so the refresh can't drop it.
+  // Safety net: keep local rows whose insert hasn't reached storage yet, so a
+  // refresh can't drop them: inserts still queued (the flush above failed) and
+  // online inserts still in flight while this read ran.
   async function keepUnsynced(serverRows) {
-    let queued
-    try { queued = await syncQueueGetAll() } catch { return serverRows }
-    const pendingIds = new Set(
-      queued.filter(q => q.table === table && q.action === 'insert' && q.payload?.id).map(q => q.payload.id)
-    )
+    let queued = []
+    try { queued = await syncQueueGetAll() } catch { /* in-flight ids still apply */ }
+    const pendingIds = new Set([
+      ...inFlight,
+      ...queued.filter(q => q.table === table && q.action === 'insert' && q.payload?.id).map(q => q.payload.id),
+    ])
     if (!pendingIds.size) return serverRows
     const serverIds = new Set(serverRows.map(r => r.id))
     const local = items.value.filter(r => pendingIds.has(r.id) && !serverIds.has(r.id))
@@ -139,12 +156,19 @@ export function createCollection({ table, cacheKey, orderBy = [], labels = false
       created_at: input.created_at || new Date().toISOString(),
       ...linkField(labelIds ?? (link ? [] : undefined)),
     }
+    await hydrateLocal()
     if (prepend) items.value.unshift(record)
     else items.value.push(record)
     loaded.value = true
     await persist()
 
-    const saved = await send({ table, action: 'insert', payload: toRow(record), _labels: labelIds })
+    inFlight.add(record.id)
+    let saved
+    try {
+      saved = await send({ table, action: 'insert', payload: toRow(record), _labels: labelIds })
+    } finally {
+      inFlight.delete(record.id)
+    }
     if (saved) {
       const i = indexOf(record.id)
       if (i !== -1) {
@@ -156,6 +180,7 @@ export function createCollection({ table, cacheKey, orderBy = [], labels = false
   }
 
   async function update(id, patch, { labels: labelIds } = {}) {
+    await hydrateLocal()
     let i = indexOf(id)
     if (i !== -1) {
       items.value[i] = { ...items.value[i], ...patch, ...linkField(labelIds) }
@@ -171,7 +196,31 @@ export function createCollection({ table, cacheKey, orderBy = [], labels = false
     return i !== -1 ? items.value[i] : null
   }
 
+  // Replace one row's label links only.
+  async function setLinks(id, labelIds) {
+    if (!link) return
+    await hydrateLocal()
+    const i = indexOf(id)
+    if (i !== -1) {
+      items.value[i] = { ...items.value[i], ...linkField(labelIds) }
+      await persist()
+    }
+    await send({ table, action: 'set_links', recordId: id, _labels: labelIds })
+  }
+
+  // Take one label off every row that has it (before the label is deleted:
+  // storage may refuse to delete a label that rows still point at).
+  async function unlinkEverywhere(labelId) {
+    if (!link) return
+    await hydrateLocal()
+    const ids = l => (l || []).map(x => x.label_id)
+    for (const row of items.value.filter(r => ids(r[link.linkTable]).includes(labelId))) {
+      await setLinks(row.id, ids(row[link.linkTable]).filter(id => id !== labelId))
+    }
+  }
+
   async function remove(id) {
+    await hydrateLocal()
     items.value = items.value.filter(r => r.id !== id)
     await persist()
     await send({ table, action: 'delete', recordId: id })
@@ -180,9 +229,10 @@ export function createCollection({ table, cacheKey, orderBy = [], labels = false
   function reset() {
     items.value = []
     loaded.value = false
+    hydrated = false
     loading.value = false
     error.value = null
   }
 
-  return { items, loaded, loading, error, fetch, insert, update, remove, send, persist, toRow, reset }
+  return { items, loaded, loading, error, fetch, insert, update, remove, setLinks, unlinkEverywhere, send, persist, toRow, reset }
 }

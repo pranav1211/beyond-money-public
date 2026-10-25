@@ -210,6 +210,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
     addTransaction,
     updateTransaction,
     deleteTransaction,
+    unlinkLabel: col.unlinkEverywhere,
     getRunningBalance,
     $reset,
   }
